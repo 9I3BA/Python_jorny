@@ -1,0 +1,632 @@
+import sys
+import pymysql
+from datetime import datetime, date, timedelta
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QLabel, QLineEdit, QPushButton,
+    QVBoxLayout, QHBoxLayout, QFormLayout, QMessageBox, QTableWidget,
+    QTableWidgetItem, QComboBox, QDialog, QDialogButtonBox, QHeaderView,
+    QTabWidget, QGridLayout
+)
+from PyQt6.QtCore import Qt, QSize
+
+# 1. ПОДКЛЮЧЕНИЕ К ВНЕШНЕЙ MYSQL-БД (из Workbench)
+# --------------------------------------------------
+
+def get_db_connection():
+    return pymysql.connect(
+        host='localhost',          # ← изменить, если сервер не локальный
+        port=3306,
+        user='root',               # ← ваш MySQL-логин
+        password='password',       # ← ваш MySQL-пароль
+        database='fitness',        # ← имя БД, созданной в Workbench
+        charset='utf8mb4',
+        autocommit=False
+    )
+
+def db_query(query, params=(), fetch=False):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(query, params)
+        if fetch:
+            return cursor.fetchall()
+        else:
+            conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_active_membership(client_id):
+    return db_query('''
+        SELECT membershipID, visitsTotal, visitsUsed, endDate, zones
+        FROM Memberships
+        WHERE clientID = %s AND membershipStatus = 'Активен'
+          AND endDate >= %s
+    ''', (client_id, str(date.today())), fetch=True)
+
+# 2–5. ВСЁ ОСТАЛЬНОЕ — БЕЗ ИЗМЕНЕНИЙ
+# (UI, окна, диалоги — как в оригинале)
+
+class AuthWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Фитнес-клуб: Вход")
+        self.setFixedSize(350, 180)
+
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        layout.addWidget(QLabel("Вход в систему", alignment=Qt.AlignmentFlag.AlignCenter))
+        self.login_edit = QLineEdit()
+        self.login_edit.setPlaceholderText("Логин")
+        self.pass_edit = QLineEdit()
+        self.pass_edit.setPlaceholderText("Пароль")
+        self.pass_edit.setEchoMode(QLineEdit.EchoMode.Password)
+
+        btn = QPushButton("Войти")
+        btn.clicked.connect(self.login)
+
+        layout.addWidget(self.login_edit)
+        layout.addWidget(self.pass_edit)
+        layout.addWidget(btn)
+
+    def login(self):
+        login = self.login_edit.text().strip()
+        pwd = self.pass_edit.text()
+        if not login or not pwd:
+            QMessageBox.warning(self, "Ошибка", "Заполните все поля.")
+            return
+
+        res = db_query("SELECT userID, fio, userType FROM Users WHERE login = %s AND password = %s", (login, pwd), fetch=True)
+        if res:
+            uid, fio, role = res[0]
+            self.hide()
+            if role == "Администратор":
+                self.w = AdminWindow(uid, fio)
+            elif role == "Клиент":
+                self.w = ClientWindow(uid, fio)
+            elif role == "Тренер":
+                self.w = TrainerWindow(uid, fio)
+            elif role == "Директор":
+                self.w = AdminWindow(uid, fio, is_director=True)
+            self.w.show()
+        else:
+            QMessageBox.warning(self, "Ошибка", "Неверный логин или пароль.")
+
+# АДМИНИСТРАТОР
+
+class AdminWindow(QMainWindow):
+    def __init__(self, user_id, fio, is_director=False):
+        super().__init__()
+        self.user_id = user_id
+        self.fio = fio
+        self.setWindowTitle(f"Администратор: {fio}")
+        self.resize(900, 600)
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout()
+        central.setLayout(layout)
+
+        tabs = QTabWidget()
+        layout.addWidget(QLabel(f"Добро пожаловать, {fio}!", alignment=Qt.AlignmentFlag.AlignCenter))
+        layout.addWidget(tabs)
+
+        # Вкладки
+        tabs.addTab(self._create_clients_tab(), "Клиенты")
+        tabs.addTab(self._create_memberships_tab(), "Абонементы")
+        tabs.addTab(self._create_visits_tab(), "Посещения")
+
+    def _create_clients_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+
+        # Таблица клиентов
+        self.clients_table = QTableWidget()
+        self.clients_table.setColumnCount(5)
+        self.clients_table.setHorizontalHeaderLabels(["ID", "ФИО", "Телефон", "Email", "Тип"])
+        self.clients_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.clients_table)
+
+        btn_add = QPushButton("Добавить клиента")
+        btn_add.clicked.connect(self._open_add_client_dialog)
+        layout.addWidget(btn_add)
+
+        self._load_clients()
+        return widget
+
+    def _load_clients(self):
+        clients = db_query("SELECT userID, fio, phone, email, userType FROM Users WHERE userType = 'Клиент'", fetch=True)
+        self.clients_table.setRowCount(len(clients))
+        for i, c in enumerate(clients):
+            for j, val in enumerate(c):
+                self.clients_table.setItem(i, j, QTableWidgetItem(str(val)))
+
+    def _open_add_client_dialog(self):
+        dialog = AddClientDialog()
+        if dialog.exec():
+            fio, phone, email, login, pwd = dialog.get_data()
+            db_query("INSERT INTO Users (fio, phone, email, login, password, userType) VALUES (%s, %s, %s, %s, %s, 'Клиент')",
+                     (fio, phone, email, login, pwd))
+            self._load_clients()
+            QMessageBox.information(self, "Успех", "Клиент добавлен.")
+
+    def _create_memberships_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+
+        self.memberships_table = QTableWidget()
+        self.memberships_table.setColumnCount(9)
+        self.memberships_table.setHorizontalHeaderLabels(
+            ["ID", "Клиент", "Тип", "Начало", "Конец", "Всего", "Исп.", "Зоны", "Статус"])
+        self.memberships_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.memberships_table)
+
+        btn_sell = QPushButton("Продать абонемент")
+        btn_sell.clicked.connect(self._open_sell_membership_dialog)
+        layout.addWidget(btn_sell)
+
+        self._load_memberships()
+        return widget
+
+    def _load_memberships(self):
+        data = db_query('''
+            SELECT m.membershipID, u.fio, m.membershipType, m.startDate, m.endDate,
+                   m.visitsTotal, m.visitsUsed, m.zones, m.membershipStatus
+            FROM Memberships m
+            JOIN Users u ON m.clientID = u.userID
+        ''', fetch=True)
+        self.memberships_table.setRowCount(len(data))
+        for i, row in enumerate(data):
+            for j, val in enumerate(row):
+                self.memberships_table.setItem(i, j, QTableWidgetItem(str(val)))
+
+    def _open_sell_membership_dialog(self):
+        dialog = SellMembershipDialog(self.user_id)
+        if dialog.exec():
+            cid, mtype, start, end, total, zones, cost = dialog.get_data()
+            db_query('''
+                INSERT INTO Memberships (clientID, membershipType, startDate, endDate,
+                                         visitsTotal, visitsUsed, zones, membershipStatus, cost, adminID)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, 'Активен', %s, %s)
+            ''', (cid, mtype, start, end, total, zones, cost, self.user_id))
+            self._load_memberships()
+            QMessageBox.information(self, "Успех", "Абонемент продан.")
+
+    def _create_visits_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+
+        self.visits_table = QTableWidget()
+        self.visits_table.setColumnCount(7)
+        self.visits_table.setHorizontalHeaderLabels(
+            ["ID", "Клиент", "Дата", "Вход", "Выход", "Зона", "Абонемент"])
+        self.visits_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.visits_table)
+
+        btn_add = QPushButton("Зафиксировать посещение")
+        btn_add.clicked.connect(self._open_add_visit_dialog)
+        layout.addWidget(btn_add)
+
+        self._load_visits()
+        return widget
+
+    def _load_visits(self):
+        data = db_query('''
+            SELECT v.visitID, u.fio, v.visitDate, v.checkInTime, v.checkOutTime, v.zone, v.membershipID
+            FROM Visits v
+            JOIN Users u ON v.clientID = u.userID
+            ORDER BY v.visitDate DESC, v.checkInTime DESC
+        ''', fetch=True)
+        self.visits_table.setRowCount(len(data))
+        for i, row in enumerate(data):
+            for j, val in enumerate(row):
+                self.visits_table.setItem(i, j, QTableWidgetItem(str(val)))
+
+    def _open_add_visit_dialog(self):
+        dialog = AddVisitDialog()
+        if dialog.exec():
+            cid, zone, mid = dialog.get_data()
+            memberships = get_active_membership(cid)
+            if not memberships:
+                QMessageBox.warning(self, "Ошибка", "У клиента нет активного абонемента.")
+                return
+            m = memberships[0]
+            mid_check, total, used, end_date, zones = m
+            if mid != mid_check:
+                QMessageBox.warning(self, "Ошибка", "Указанный абонемент не активен или не принадлежит клиенту.")
+                return
+            if str(zone) not in str(zones).split(','):
+                QMessageBox.warning(self, "Ошибка", f"Зона '{zone}' не входит в абонемент.")
+                return
+            if total != 999 and used >= total:
+                QMessageBox.warning(self, "Ошибка", "Исчерпан лимит посещений.")
+                return
+
+            now = datetime.now()
+            today = now.strftime('%Y-%m-%d')
+            time_str = now.strftime('%H:%M')
+
+            db_query("UPDATE Memberships SET visitsUsed = visitsUsed + 1 WHERE membershipID = %s", (mid,))
+            db_query('''
+                INSERT INTO Visits (clientID, visitDate, checkInTime, zone, membershipID)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (cid, today, time_str, zone, mid))
+
+            self._load_visits()
+            QMessageBox.information(self, "Успех", "Посещение зафиксировано.")
+
+# КЛИЕНТ
+
+class ClientWindow(QMainWindow):
+    def __init__(self, user_id, fio):
+        super().__init__()
+        self.user_id = user_id
+        self.fio = fio
+        self.setWindowTitle(f"Клиент: {fio}")
+        self.resize(800, 500)
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout()
+        central.setLayout(layout)
+
+        tabs = QTabWidget()
+        layout.addWidget(QLabel(f"Привет, {fio}!", alignment=Qt.AlignmentFlag.AlignCenter))
+        layout.addWidget(tabs)
+
+        tabs.addTab(self._create_memberships_tab(), "Мои абонементы")
+        tabs.addTab(self._create_classes_tab(), "Групповые занятия")
+
+    def _create_memberships_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+
+        table = QTableWidget()
+        table.setColumnCount(7)
+        table.setHorizontalHeaderLabels(["ID", "Тип", "Начало", "Конец", "Всего", "Исп.", "Статус"])
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(table)
+
+        memberships = db_query('''
+            SELECT membershipID, membershipType, startDate, endDate, visitsTotal, visitsUsed, membershipStatus
+            FROM Memberships WHERE clientID = %s
+        ''', (self.user_id,), fetch=True)
+
+        table.setRowCount(len(memberships))
+        for i, m in enumerate(memberships):
+            for j, val in enumerate(m):
+                table.setItem(i, j, QTableWidgetItem(str(val)))
+
+        return widget
+
+    def _create_classes_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+
+        self.classes_table = QTableWidget()
+        self.classes_table.setColumnCount(8)
+        self.classes_table.setHorizontalHeaderLabels(
+            ["ID", "Название", "Тренер", "Дата", "Время", "Зал", "Мест", "Статус"])
+        self.classes_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.classes_table)
+
+        btn_enroll = QPushButton("Записаться на занятие")
+        btn_enroll.clicked.connect(self._enroll_to_class)
+        layout.addWidget(btn_enroll)
+
+        self._load_classes()
+        return widget
+
+    def _load_classes(self):
+        data = db_query('''
+            SELECT gc.classID, gc.className, u.fio, gc.classDate, gc.startTime, gc.hall,
+                   gc.enrolledParticipants, gc.maxParticipants, gc.classStatus
+            FROM GroupClasses gc
+            JOIN Users u ON gc.trainerID = u.userID
+            WHERE gc.classDate >= %s AND gc.classStatus IN ('Запланировано', 'Группа заполнена')
+        ''', (str(date.today()),), fetch=True)
+
+        self.classes_table.setRowCount(len(data))
+        for i, c in enumerate(data):
+            cid, name, tr, d, t, h, en, mx, st = c
+            status = f"{st} ({en}/{mx})"
+            self.classes_table.setItem(i, 0, QTableWidgetItem(str(cid)))
+            self.classes_table.setItem(i, 1, QTableWidgetItem(name))
+            self.classes_table.setItem(i, 2, QTableWidgetItem(tr))
+            self.classes_table.setItem(i, 3, QTableWidgetItem(d))
+            self.classes_table.setItem(i, 4, QTableWidgetItem(f"{t}"))
+            self.classes_table.setItem(i, 5, QTableWidgetItem(h))
+            self.classes_table.setItem(i, 6, QTableWidgetItem(f"{en}/{mx}"))
+            self.classes_table.setItem(i, 7, QTableWidgetItem(st))
+
+    def _enroll_to_class(self):
+        row = self.classes_table.currentRow()
+        if row == -1:
+            QMessageBox.warning(self, "Ошибка", "Выберите занятие.")
+            return
+
+        cid = int(self.classes_table.item(row, 0).text())
+        status = self.classes_table.item(row, 7).text()
+        enrolled = int(self.classes_table.item(row, 6).text().split('/')[0])
+        max_p = int(self.classes_table.item(row, 6).text().split('/')[1])
+
+        if status == "Группа заполнена":
+            QMessageBox.warning(self, "Ошибка", "Группа уже заполнена.")
+            return
+
+        memberships = get_active_membership(self.user_id)
+        valid = any("Групповые" in m[4] for m in memberships)
+        if not valid:
+            QMessageBox.warning(self, "Ошибка", "Нет активного абонемента с доступом к групповым занятиям.")
+            return
+
+        db_query("UPDATE GroupClasses SET enrolledParticipants = enrolledParticipants + 1 WHERE classID = %s", (cid,))
+        if enrolled + 1 >= max_p:
+            db_query("UPDATE GroupClasses SET classStatus = 'Группа заполнена' WHERE classID = %s", (cid,))
+
+        self._load_classes()
+        QMessageBox.information(self, "Успех", "Вы записаны на занятие!")
+
+# ТРЕНЕР
+
+class TrainerWindow(QMainWindow):
+    def __init__(self, user_id, fio):
+        super().__init__()
+        self.user_id = user_id
+        self.fio = fio
+        self.setWindowTitle(f"Тренер: {fio}")
+        self.resize(900, 500)
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QVBoxLayout()
+        central.setLayout(layout)
+
+        layout.addWidget(QLabel(f"Добро пожаловать, {fio}!", alignment=Qt.AlignmentFlag.AlignCenter))
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
+
+        tabs.addTab(self._create_classes_tab(), "Мои групповые занятия")
+        tabs.addTab(self._create_personal_tab(), "Персональные тренировки")
+
+    def _create_classes_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+
+        table = QTableWidget()
+        table.setColumnCount(8)
+        table.setHorizontalHeaderLabels(
+            ["ID", "Название", "Дата", "Время", "Зал", "Мест", "Записано", "Статус"])
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(table)
+
+        classes = db_query('''
+            SELECT classID, className, classDate, startTime, hall,
+                   maxParticipants, enrolledParticipants, classStatus
+            FROM GroupClasses WHERE trainerID = %s
+            ORDER BY classDate, startTime
+        ''', (self.user_id,), fetch=True)
+
+        table.setRowCount(len(classes))
+        for i, c in enumerate(classes):
+            for j, val in enumerate(c):
+                table.setItem(i, j, QTableWidgetItem(str(val) if val is not None else ''))
+
+        return widget
+
+    def _create_personal_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+
+        self.personal_table = QTableWidget()
+        self.personal_table.setColumnCount(6)
+        self.personal_table.setHorizontalHeaderLabels(
+            ["ID", "Клиент", "Дата", "Время", "Упражнения", "Прогресс"])
+        self.personal_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.personal_table)
+
+        btn_add = QPushButton("Добавить тренировку")
+        btn_add.clicked.connect(self._add_personal_training)
+        layout.addWidget(btn_add)
+
+        self._load_personal()
+        return widget
+
+    def _load_personal(self):
+        data = db_query('''
+            SELECT pt.trainingID, u.fio, pt.trainingDate, pt.startTime,
+                   pt.exercises, pt.progressMetrics
+            FROM PersonalTraining pt
+            JOIN Users u ON pt.clientID = u.userID
+            WHERE pt.trainerID = %s
+            ORDER BY pt.trainingDate DESC
+        ''', (self.user_id,), fetch=True)
+
+        self.personal_table.setRowCount(len(data))
+        for i, row in enumerate(data):
+            for j, val in enumerate(row):
+                self.personal_table.setItem(i, j, QTableWidgetItem(str(val) if val else ''))
+
+    def _add_personal_training(self):
+        dialog = AddPersonalDialog(self.user_id)
+        if dialog.exec():
+            cid, tdate, tstart, tend, ex, notes, prog = dialog.get_data()
+            db_query('''
+                INSERT INTO PersonalTraining (clientID, trainerID, trainingDate, startTime, endTime,
+                                              exercises, notes, progressMetrics)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (cid, self.user_id, tdate, tstart, tend, ex, notes, prog))
+            self._load_personal()
+            QMessageBox.information(self, "Успех", "Тренировка добавлена.")
+
+# 4. ДИАЛОГИ (без изменений)
+
+class AddClientDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Новый клиент")
+        self.setMinimumWidth(400)
+        layout = QFormLayout()
+        self.setLayout(layout)
+
+        self.fio = QLineEdit()
+        self.phone = QLineEdit()
+        self.email = QLineEdit()
+        self.login = QLineEdit()
+        self.pwd = QLineEdit()
+        self.pwd.setEchoMode(QLineEdit.EchoMode.Password)
+
+        layout.addRow("ФИО:", self.fio)
+        layout.addRow("Телефон:", self.phone)
+        layout.addRow("Email:", self.email)
+        layout.addRow("Логин:", self.login)
+        layout.addRow("Пароль:", self.pwd)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    def get_data(self):
+        return self.fio.text(), self.phone.text(), self.email.text(), self.login.text(), self.pwd.text()
+
+class SellMembershipDialog(QDialog):
+    def __init__(self, admin_id):
+        super().__init__()
+        self.admin_id = admin_id
+        self.setWindowTitle("Продажа абонемента")
+        self.setMinimumWidth(450)
+        layout = QFormLayout()
+        self.setLayout(layout)
+
+        clients = db_query("SELECT userID, fio FROM Users WHERE userType = 'Клиент'", fetch=True)
+        self.client_combo = QComboBox()
+        for uid, fio in clients:
+            self.client_combo.addItem(f"{fio} (ID: {uid})", uid)
+        layout.addRow("Клиент:", self.client_combo)
+
+        self.mtype = QLineEdit("Месячный")
+        self.start = QLineEdit(str(date.today()))
+        self.end = QLineEdit(str(date.today() + timedelta(days=30)))
+        self.total = QLineEdit("999")
+        self.zones = QLineEdit("Зал, Групповые")
+        self.cost = QLineEdit("5000")
+
+        layout.addRow("Тип:", self.mtype)
+        layout.addRow("Начало (ГГГГ-ММ-ДД):", self.start)
+        layout.addRow("Конец (ГГГГ-ММ-ДД):", self.end)
+        layout.addRow("Лимит посещений (999 = безлимит):", self.total)
+        layout.addRow("Зоны (через запятую):", self.zones)
+        layout.addRow("Стоимость:", self.cost)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    def get_data(self):
+        cid = self.client_combo.currentData()
+        return (cid, self.mtype.text(), self.start.text(), self.end.text(),
+                int(self.total.text()), self.zones.text(), float(self.cost.text()))
+
+class AddVisitDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Фиксация посещения")
+        self.setMinimumWidth(400)
+        layout = QFormLayout()
+        self.setLayout(layout)
+
+        clients = db_query("SELECT userID, fio FROM Users WHERE userType = 'Клиент'", fetch=True)
+        self.client_combo = QComboBox()
+        for uid, fio in clients:
+            self.client_combo.addItem(f"{fio} (ID: {uid})", uid)
+        layout.addRow("Клиент:", self.client_combo)
+
+        self.zone = QComboBox()
+        self.zone.addItems(["Тренажерный зал", "Бассейн", "Групповое занятие", "Спа"])
+
+        self.membership_combo = QComboBox()
+        self.client_combo.currentIndexChanged.connect(self._update_memberships)
+        self._update_memberships()
+
+        layout.addRow("Зона:", self.zone)
+        layout.addRow("Абонемент:", self.membership_combo)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    def _update_memberships(self):
+        self.membership_combo.clear()
+        cid = self.client_combo.currentData()
+        if cid is None:
+            return
+        memberships = db_query('''
+            SELECT membershipID, membershipType, visitsTotal - visitsUsed AS remaining
+            FROM Memberships
+            WHERE clientID = %s AND membershipStatus = 'Активен'
+        ''', (cid,), fetch=True)
+        for mid, mtype, rem in memberships:
+            label = f"{mtype} (осталось: {rem if rem != 999 else '∞'})"
+            self.membership_combo.addItem(label, mid)
+
+    def get_data(self):
+        cid = self.client_combo.currentData()
+        zone = self.zone.currentText()
+        mid = self.membership_combo.currentData()
+        return cid, zone, mid
+
+class AddPersonalDialog(QDialog):
+    def __init__(self, trainer_id):
+        super().__init__()
+        self.trainer_id = trainer_id
+        self.setWindowTitle("Новая перс. тренировка")
+        self.setMinimumWidth(450)
+        layout = QFormLayout()
+        self.setLayout(layout)
+
+        clients = db_query("SELECT userID, fio FROM Users WHERE userType = 'Клиент'", fetch=True)
+        self.client_combo = QComboBox()
+        for uid, fio in clients:
+            self.client_combo.addItem(f"{fio}", uid)
+        self.date_edit = QLineEdit(str(date.today()))
+        self.start_edit = QLineEdit("10:00")
+        self.end_edit = QLineEdit("11:00")
+        self.ex_edit = QLineEdit()
+        self.notes_edit = QLineEdit()
+        self.prog_edit = QLineEdit()
+
+        layout.addRow("Клиент:", self.client_combo)
+        layout.addRow("Дата (ГГГГ-ММ-ДД):", self.date_edit)
+        layout.addRow("Начало (ЧЧ:ММ):", self.start_edit)
+        layout.addRow("Конец (ЧЧ:ММ):", self.end_edit)
+        layout.addRow("Упражнения:", self.ex_edit)
+        layout.addRow("Заметки:", self.notes_edit)
+        layout.addRow("Прогресс:", self.prog_edit)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    def get_data(self):
+        cid = self.client_combo.currentData()
+        return (cid, self.date_edit.text(), self.start_edit.text(), self.end_edit.text(),
+                self.ex_edit.text(), self.notes_edit.text(), self.prog_edit.text())
+
+# 5. ЗАПУСК
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = AuthWindow()
+    window.show()
+    sys.exit(app.exec())

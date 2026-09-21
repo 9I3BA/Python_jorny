@@ -1,0 +1,313 @@
+{% extends 'base.html' %}
+{% block title %}Библиотека{% endblock %}
+{% block extra_css %}
+<style>
+/* ── Widen the page for library (override global max-width) ─────────────── */
+.main-content { max-width: 1800px !important; }
+
+/* ── Strip main-content side padding for library ────────────────────────── */
+.lib-page-wrap { margin: 0 -24px; }
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.library-layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start; padding: 0 16px; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.lib-sidebar { position: sticky; top: 20px; background: var(--bg-card); border-radius: 14px; padding: 16px; border: 1px solid var(--border); }
+.lib-sidebar h3 { font-size: .85rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px; }
+.lib-nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; color: var(--text-primary); text-decoration: none; font-size: .9rem; transition: background .15s; cursor: pointer; border: none; background: none; width: 100%; text-align: left; }
+.lib-nav-item:hover { background: var(--bg-elevated); }
+.lib-nav-item.active { background: rgba(255,102,0,.15); color: var(--accent-green); }
+.lib-nav-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Content area ────────────────────────────────────────────────────────── */
+.lib-content { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+/* ── Module cards ────────────────────────────────────────────────────────── */
+.lib-module-card { background: var(--bg-card); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; min-width: 0; }
+.lib-module-header { display: flex; align-items: center; gap: 14px; padding: 18px 22px; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
+.lib-module-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; background: var(--bg-elevated); border: 2px solid var(--border); }
+.lib-module-title { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); word-break: break-word; }
+.lib-module-desc { font-size: .82rem; color: var(--text-secondary); margin-top: 2px; word-break: break-word; }
+.lib-module-toggle { margin-left: auto; color: var(--text-secondary); font-size: 1.2rem; transition: transform .2s; flex-shrink: 0; padding-left: 8px; }
+.lib-module-body { padding: 22px; display: none; min-width: 0; overflow: hidden; background: var(--bg-card); }
+.lib-module-body.open { display: block; }
+
+/* ── Force theme-correct backgrounds inside admin-created content ───────── */
+/* Only overrides background/border — not color (that breaks specific rules) */
+.lib-module-body .theory-inner { color: var(--text-primary); }
+.lib-module-body .theory-inner *,
+.ethics-sub-body .article-inner * {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+.lib-module-body .theory-inner pre,
+.lib-module-body .theory-inner code,
+.ethics-sub-body .article-inner pre,
+.ethics-sub-body .article-inner code { background: var(--bg-elevated) !important; }
+.lib-module-body .theory-inner .tip,
+.ethics-sub-body .article-inner .tip  { background: rgba(255,102,0,.1) !important; }
+.lib-module-body .theory-inner .tip code,
+.ethics-sub-body .article-inner .tip code { background: transparent !important; }
+.lib-module-body h2 { font-size: 1.2rem; color: var(--accent-green); margin: 0 0 12px; }
+.lib-module-body h3 { font-size: 1rem; color: var(--text-primary); margin: 18px 0 8px; }
+.lib-module-body p { color: var(--text-secondary); line-height: 1.65; margin: 0 0 10px; overflow-wrap: break-word; word-break: break-word; }
+.lib-module-body pre { background: var(--bg-elevated); border-radius: 8px; padding: 14px; overflow-x: auto; margin: 10px 0; border: 1px solid var(--border); max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
+.lib-module-body code { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: .88rem; color: var(--text-primary); word-break: break-all; }
+.lib-module-body pre code { color: var(--accent-blue); word-break: normal; }
+.lib-module-body .tip { background: rgba(255,102,0,.1); border-left: 3px solid var(--accent-green); border-radius: 0 8px 8px 0; padding: 10px 14px; color: var(--text-primary); font-size: .9rem; margin: 12px 0; overflow-wrap: break-word; }
+.lib-module-body ul, .lib-module-body ol { color: var(--text-secondary); padding-left: 22px; line-height: 1.8; overflow-wrap: break-word; word-break: break-word; }
+.lib-module-body strong { color: var(--text-primary); }
+.lib-open-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 8px 16px; border-radius: 8px; background: var(--accent-green); color: #fff; text-decoration: none; font-size: .85rem; font-weight: 600; }
+.lib-open-btn:hover { background: #FF8C00; }
+.lib-empty { color: var(--text-muted); font-style: italic; padding: 10px 0; }
+
+/* ── Ethics section ──────────────────────────────────────────────────────── */
+.lib-ethics-card { background: var(--bg-card); border-radius: 16px; border: 1px solid #7C3AED44; overflow: hidden; min-width: 0; }
+.lib-ethics-header { display: flex; align-items: center; gap: 14px; padding: 18px 22px; border-bottom: 1px solid #7C3AED33; cursor: pointer; user-select: none; background: linear-gradient(135deg, rgba(124,58,237,.06) 0%, transparent 100%); }
+.lib-ethics-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; background: rgba(124,58,237,.15); border: 1px solid rgba(124,58,237,.3); }
+.lib-ethics-body { padding: 16px 22px 22px; display: none; min-width: 0; overflow: hidden; }
+.lib-ethics-body.open { display: block; }
+
+/* ── Ethics sub-sections ─────────────────────────────────────────────────── */
+.ethics-sub { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; overflow: hidden; min-width: 0; }
+.ethics-sub-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; user-select: none; font-weight: 600; font-size: .92rem; color: var(--text-primary); transition: background .15s; }
+.ethics-sub-header:hover { background: var(--bg-elevated); }
+.ethics-sub-toggle { margin-left: auto; color: var(--text-secondary); font-size: 1rem; flex-shrink: 0; padding-left: 8px; }
+.ethics-sub-body { padding: 16px 20px; display: none; border-top: 1px solid var(--border); background: var(--bg-elevated); min-width: 0; overflow: hidden; }
+.ethics-sub-body.open { display: block; }
+.ethics-sub-body h2 { font-size: 1.1rem; color: #A78BFA; margin: 0 0 10px; }
+.ethics-sub-body h3 { font-size: .95rem; color: var(--text-primary); margin: 14px 0 6px; }
+.ethics-sub-body p { color: var(--text-secondary); line-height: 1.65; margin: 0 0 10px; overflow-wrap: break-word; word-break: break-word; }
+.ethics-sub-body pre { background: var(--bg-card); border-radius: 8px; padding: 14px; overflow-x: auto; margin: 10px 0; border: 1px solid var(--border); max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
+.ethics-sub-body code { font-family: 'JetBrains Mono', monospace; font-size: .85rem; color: #A78BFA; word-break: break-all; }
+.ethics-sub-body pre code { color: #93C5FD; word-break: normal; }
+.ethics-sub-body ul, .ethics-sub-body ol { color: var(--text-secondary); padding-left: 22px; line-height: 1.8; overflow-wrap: break-word; word-break: break-word; }
+.ethics-sub-body strong { color: var(--text-primary); }
+.ethics-sub-body .tip { background: rgba(124,58,237,.1); border-left: 3px solid #7C3AED; border-radius: 0 8px 8px 0; padding: 10px 14px; color: var(--text-primary); font-size: .9rem; margin: 12px 0; overflow-wrap: break-word; }
+
+/* ── Light theme: fix code contrast ─────────────────────────────────────── */
+body.light-theme .lib-module-body pre,
+body.light-theme .lib-module-body .theory-inner pre,
+body.light-theme .ethics-sub-body pre,
+body.light-theme .ethics-sub-body .article-inner pre {
+  background: #AECDE4 !important;
+  border-color: #6FA8CB !important;
+}
+body.light-theme .lib-module-body pre code,
+body.light-theme .lib-module-body .theory-inner pre code,
+body.light-theme .ethics-sub-body pre code {
+  color: #0B2040 !important;
+  background: transparent !important;
+}
+body.light-theme .ethics-sub-body code { color: #5B21B6 !important; }
+
+/* ── Responsive: tablet ──────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .library-layout { grid-template-columns: 180px 1fr; gap: 16px; }
+  .lib-module-body { padding: 16px; }
+  .lib-ethics-body { padding: 12px 16px 16px; }
+}
+
+/* ── Responsive: mobile ──────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .library-layout { grid-template-columns: 1fr; gap: 12px; }
+
+  /* Sidebar → horizontal pill strip */
+  .lib-sidebar {
+    position: static;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+  .lib-sidebar::-webkit-scrollbar { display: none; }
+  .lib-sidebar h3 { display: none; }
+  .lib-nav-item {
+    white-space: nowrap;
+    flex-shrink: 0;
+    width: auto;
+    padding: 6px 12px;
+    font-size: .8rem;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+  }
+  .lib-nav-dot { display: none; }
+
+  /* Cards */
+  .lib-module-header { padding: 14px 16px; gap: 10px; }
+  .lib-module-icon { width: 36px; height: 36px; font-size: 18px; }
+  .lib-module-title { font-size: .95rem; }
+  .lib-module-desc { font-size: .78rem; }
+  .lib-module-toggle { font-size: 1rem; }
+  .lib-module-body { padding: 14px 16px; }
+  .lib-module-body h2 { font-size: 1.05rem; }
+  .lib-module-body h3 { font-size: .92rem; }
+  .lib-module-body p { font-size: .88rem; }
+  .lib-module-body pre { padding: 10px 12px; font-size: .8rem; }
+  .lib-module-body code { font-size: .8rem; }
+  .lib-module-body ul, .lib-module-body ol { font-size: .88rem; padding-left: 18px; }
+  .lib-module-body .tip { font-size: .84rem; padding: 8px 12px; }
+  .lib-open-btn { font-size: .82rem; padding: 7px 14px; }
+
+  /* Ethics */
+  .lib-ethics-header { padding: 14px 16px; gap: 10px; }
+  .lib-ethics-icon { width: 36px; height: 36px; font-size: 18px; }
+  .lib-ethics-body { padding: 10px 14px 14px; }
+  .ethics-sub-header { padding: 10px 12px; font-size: .85rem; }
+  .ethics-sub-body { padding: 12px 14px; }
+  .ethics-sub-body h2 { font-size: 1rem; }
+  .ethics-sub-body h3 { font-size: .88rem; }
+  .ethics-sub-body p { font-size: .86rem; }
+  .ethics-sub-body pre { padding: 10px 12px; font-size: .78rem; }
+  .ethics-sub-body code { font-size: .78rem; }
+  .ethics-sub-body ul, .ethics-sub-body ol { font-size: .86rem; padding-left: 16px; }
+  .ethics-sub-body .tip { font-size: .82rem; padding: 8px 10px; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-student">
+  <div class="page-header">
+    <h1>📖 Библиотека знаний</h1>
+    <p class="page-subtitle">Вся теория по всем модулям в одном месте</p>
+  </div>
+
+  <div class="lib-page-wrap">
+  <div class="library-layout">
+    <!-- Sidebar navigation -->
+    <div class="lib-sidebar">
+      <h3>Модули</h3>
+      {% for m in modules %}
+      <button class="lib-nav-item" onclick="scrollToModule('mod-{{ m.id }}')">
+        <span class="lib-nav-dot" style="background:{{ m.color }}"></span>
+        {{ m.icon }} {{ m.title }}
+      </button>
+      {% endfor %}
+      {% for cat_name in lib_categories.keys() %}
+      <button class="lib-nav-item" onclick="scrollToModule('mod-cat-{{ loop.index }}')">
+        <span class="lib-nav-dot" style="background:#7C3AED"></span>
+        {{ cat_name }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Module theory cards -->
+    <div class="lib-content">
+      {% for m in modules %}
+        {% set th = module_theories[m.id] %}
+        <div class="lib-module-card" id="mod-{{ m.id }}">
+          <div class="lib-module-header" onclick="toggleModule('body-{{ m.id }}', 'arrow-{{ m.id }}')">
+            <div class="lib-module-icon" style="border-color: {{ m.color }};">{{ m.icon }}</div>
+            <div>
+              <div class="lib-module-title">{{ m.title }}</div>
+              <div class="lib-module-desc">{{ m.description }}</div>
+            </div>
+            <span class="lib-module-toggle" id="arrow-{{ m.id }}">▶</span>
+          </div>
+          <div class="lib-module-body" id="body-{{ m.id }}">
+            {% if th and th.theory_content %}
+              <div class="theory-inner">{{ th.theory_content | safe }}</div>
+              <a href="{{ url_for('student_sandbox') }}" class="lib-open-btn">
+                🧪 Попробовать в песочнице
+              </a>
+            {% else %}
+              <p class="lib-empty">Теория для этого модуля ещё не добавлена.</p>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <!-- ═══ LIBRARY ARTICLE CATEGORIES (from DB) ══════════════════════════ -->
+      {% for cat_name, cat_articles in lib_categories.items() %}
+      <div class="lib-ethics-card" id="mod-cat-{{ loop.index }}">
+        <div class="lib-ethics-header" onclick="toggleModule('body-cat-{{ loop.index }}','arrow-cat-{{ loop.index }}')">
+          <div class="lib-ethics-icon">{{ cat_articles[0].icon if cat_articles else '📚' }}</div>
+          <div>
+            <div class="lib-module-title">{{ cat_name }}</div>
+            <div class="lib-module-desc">{{ cat_articles | length }} {{ 'статья' if (cat_articles | length) == 1 else ('статьи' if (cat_articles | length) < 5 else 'статей') }}</div>
+          </div>
+          <span class="lib-module-toggle" id="arrow-cat-{{ loop.index }}">▶</span>
+        </div>
+        <div class="lib-ethics-body" id="body-cat-{{ loop.index }}">
+          {% for article in cat_articles %}
+          <div class="ethics-sub">
+            <div class="ethics-sub-header" onclick="toggleSub('asub-{{ article.id }}','aarrow-{{ article.id }}')">
+              <span>{{ article.icon }}</span>
+              {{ article.title }}
+              <span class="ethics-sub-toggle" id="aarrow-{{ article.id }}">▶</span>
+            </div>
+            <div class="ethics-sub-body" id="asub-{{ article.id }}">
+              <div class="article-inner">{{ article.content | safe }}</div>
+              {% if article.has_sandbox %}
+              <a href="{{ url_for('student_sandbox') }}" class="lib-open-btn">🧪 Попробовать в песочнице</a>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+      <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+    </div>
+  </div>
+  </div>{# /lib-page-wrap #}
+</div>
+
+<script>
+function toggleModule(bodyId, arrowId) {
+  const body = document.getElementById(bodyId);
+  const arrow = document.getElementById(arrowId);
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open');
+  arrow.textContent = isOpen ? '▶' : '▼';
+  arrow.style.transform = isOpen ? '' : 'rotate(0deg)';
+}
+
+function scrollToModule(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({behavior: 'smooth', block: 'start'});
+  const bodyId = 'body-' + id.replace('mod-', '');
+  const arrowId = 'arrow-' + id.replace('mod-', '');
+  const body = document.getElementById(bodyId);
+  if (body && !body.classList.contains('open')) {
+    toggleModule(bodyId, arrowId);
+  }
+  document.querySelectorAll('.lib-nav-item').forEach(btn => btn.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function toggleSub(bodyId, arrowId) {
+  const body = document.getElementById(bodyId);
+  const arrow = document.getElementById(arrowId);
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open');
+  arrow.textContent = isOpen ? '▶' : '▼';
+}
+
+// Strip hardcoded inline background/color from admin-created HTML so
+// dark-theme CSS variables apply correctly
+function cleanTheoryStyles() {
+  const sel = '.theory-inner, .theory-inner *, .article-inner, .article-inner *';
+  document.querySelectorAll(sel).forEach(el => {
+    el.style.removeProperty('background');
+    el.style.removeProperty('background-color');
+    el.style.removeProperty('color');
+    el.style.removeProperty('border-color');
+  });
+}
+cleanTheoryStyles();
+
+// Open first module by default
+const firstBody = document.querySelector('.lib-module-body');
+const firstArrow = document.querySelector('.lib-module-toggle');
+if (firstBody) { firstBody.classList.add('open'); firstArrow.textContent = '▼'; }
+</script>
+{% endblock %}

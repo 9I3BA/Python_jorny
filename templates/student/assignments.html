@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+{% block title %}Задания{% endblock %}
+{% block extra_css %}
+<style>
+.assignment-attachment { margin: 8px 0; font-size: 13px; }
+.attach-link { color: #33BBFF; text-decoration: none; font-weight: 600; }
+.attach-link:hover { text-decoration: underline; }
+.file-hint { font-size: 11px; color: var(--text-muted); margin-left: 10px; }
+.closed-notice { margin-top: 12px; padding: 10px 14px; background: rgba(255,70,70,.08); border: 1px solid rgba(255,70,70,.25); border-radius: 8px; font-size: 13px; color: var(--accent-red); }
+</style>
+<script>
+function validateSubmit(form) {
+  const text = form.querySelector('textarea[name="content"]').value.trim();
+  const file = form.querySelector('input[type="file"]').value;
+  if (!text && !file) {
+    const aid = form.querySelector('input[name="assignment_id"]').value;
+    const err = document.getElementById('submitError-' + aid);
+    if (err) err.style.display = 'block';
+    return false;
+  }
+  return true;
+}
+
+function updateFileLabel(input, labelId) {
+  const label = document.getElementById(labelId);
+  if (!label) return;
+  if (input.files && input.files[0]) {
+    label.style.borderColor = '#FF6600';
+    label.style.color = '#FF6600';
+    const name = input.files[0].name;
+    label.childNodes[0].textContent = '✅ ' + (name.length > 24 ? name.slice(0, 22) + '…' : name) + ' ';
+  }
+}
+</script>
+{% endblock %}
+{% block content %}
+<div class="page-assignments">
+  <div class="page-header">
+    <h1>📝 Домашние задания</h1>
+  </div>
+
+  {% if assignments %}
+  <div class="assignments-container">
+    {% for a in assignments %}
+    {% set sub = my_subs.get(a.id) %}
+    <div class="assignment-card {{ 'graded' if sub and sub.status == 'graded' else ('submitted' if sub else '') }}">
+      <div class="assignment-card-header">
+        <h3>{{ a.title }}</h3>
+        {% if sub %}
+          {% if sub.status == 'graded' %}
+            <span class="badge badge-success">✅ Проверено: {{ sub.grade }}</span>
+          {% else %}
+            <span class="badge badge-info">📬 Отправлено</span>
+          {% endif %}
+        {% elif a.is_closed %}
+          <span class="badge badge-danger">🔒 Приём закрыт</span>
+        {% elif a.due_date %}
+          <span class="badge badge-warning countdown-badge"
+                data-due="{{ a.due_date.strftime('%Y-%m-%dT%H:%M:%S') }}">⏳ …</span>
+        {% else %}
+          <span class="badge badge-warning">⏳ Ожидает выполнения</span>
+        {% endif %}
+      </div>
+      <p class="assignment-desc">{{ a.description }}</p>
+      {% if a.file_path %}
+      <div class="assignment-attachment">
+        📎 <a href="{{ url_for('assignment_download_file', filename=a.file_path) }}" class="attach-link" target="_blank">Скачать файл учителя</a>
+      </div>
+      {% endif %}
+      {% if a.due_date %}
+      <div class="assignment-due">📅 Срок: {{ a.due_date.strftime('%d.%m.%Y %H:%M') }}</div>
+      {% endif %}
+      {% if sub and sub.feedback %}
+      <div class="feedback-block">
+        <strong>💬 Отзыв учителя:</strong>
+        <p>{{ sub.feedback }}</p>
+      </div>
+      {% endif %}
+      {% if not sub or sub.status != 'graded' %}
+      {% if a.is_closed and not sub %}
+        <div class="closed-notice">🔒 Учитель закрыл приём работ. Сдать задание больше нельзя.</div>
+      {% else %}
+      <div class="submit-section">
+        <form method="POST" action="{{ url_for('api_submit_assignment') }}" enctype="multipart/form-data" class="submit-form" onsubmit="return validateSubmit(this)">
+          <input type="hidden" name="assignment_id" value="{{ a.id }}">
+          <textarea name="content" class="form-input" rows="3" placeholder="Напиши ответ или прикрепи файл...">{{ sub.content if sub else '' }}</textarea>
+          <div class="submit-file">
+            <label class="file-label" id="fileLabel-{{ a.id }}">
+              📎 Прикрепить файл
+              <input type="file" name="file" class="file-input"
+                accept=".pdf,.doc,.docx,.txt,.py,.jpg,.jpeg,.png,.gif,.zip,.xlsx,.xls,.pptx,.ppt"
+                onchange="updateFileLabel(this, 'fileLabel-{{ a.id }}')">
+            </label>
+            <span class="file-hint">PDF, DOC, TXT, PY, JPG, PNG, ZIP, XLS, PPTX · до 16 МБ</span>
+          </div>
+          <div class="submit-error" id="submitError-{{ a.id }}" style="display:none; color:#ff7675; font-size:13px; margin-top:6px;">
+            ⚠️ Напиши ответ или прикрепи файл перед отправкой.
+          </div>
+          <button type="submit" class="btn btn-primary">
+            {{ '🔄 Обновить ответ' if sub else '📤 Отправить' }}
+          </button>
+        </form>
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-page">
+    <div class="empty-icon">🎉</div>
+    <h2>Нет заданий!</h2>
+    <p>Твой учитель пока ничего не задал. Самое время учиться на карте!</p>
+    <a href="{{ url_for('student_levelmap') }}" class="btn btn-primary">🗺️ Открыть карту</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function updateCountdowns() {
+  document.querySelectorAll('.countdown-badge[data-due]').forEach(el => {
+    const due = new Date(el.dataset.due + 'Z');
+    const diff = due - new Date();
+    if (diff <= 0) {
+      el.textContent = '⌛ Время вышло';
+      el.className = el.className.replace('badge-warning', 'badge-danger');
+      return;
+    }
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    let txt = '⏳ ';
+    if (d > 0) txt += d + 'д ';
+    if (d > 0 || h > 0) txt += h + 'ч ';
+    txt += m + 'м ' + s + 'с';
+    el.textContent = txt;
+    if (diff < 3600000) el.className = el.className.replace('badge-warning', 'badge-danger');
+  });
+}
+updateCountdowns();
+setInterval(updateCountdowns, 1000);
+</script>
+{% endblock %}

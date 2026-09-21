@@ -1,0 +1,471 @@
+{% extends 'base.html' %}
+{% block title %}Управление библиотекой{% endblock %}
+{% block extra_css %}
+<style>
+/* ── Layout ─────────────────────────────────────────────────── */
+.lib-admin-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) { .lib-admin-layout { grid-template-columns: 1fr; } }
+
+/* ── Articles list (narrow left column) ─────────────────────── */
+.lib-articles-panel { display: flex; flex-direction: column; gap: 10px; }
+.lib-cat-block { background: var(--bg-card); border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
+.lib-cat-title {
+  padding: 8px 12px; font-weight: 700; font-size: .72rem; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .07em;
+  background: var(--bg-elevated); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 5px;
+}
+.lib-article-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+}
+.lib-article-row:last-child { border-bottom: none; }
+.lib-article-row-icon { font-size: .9rem; flex-shrink: 0; width: 18px; text-align: center; }
+.lib-article-row-title {
+  flex: 1; font-size: .78rem; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.lib-article-row-actions { display: flex; gap: 3px; flex-shrink: 0; }
+.lib-btn-edit {
+  padding: 2px 8px; background: rgba(0,200,150,.1); border: 1px solid rgba(0,200,150,.3);
+  color: var(--accent-green); border-radius: 4px; font-size: .68rem; font-weight: 700; cursor: pointer;
+}
+.lib-btn-edit:hover { background: rgba(0,200,150,.22); }
+.lib-btn-del {
+  padding: 2px 6px; background: rgba(255,70,70,.08); border: 1px solid rgba(255,70,70,.2);
+  color: #ff5555; border-radius: 4px; font-size: .68rem; cursor: pointer;
+}
+.lib-btn-del:hover { background: rgba(255,70,70,.18); }
+.empty-lib { color: var(--text-muted); font-style: italic; padding: 12px; font-size: .8rem; }
+
+/* ── Form card (wide right column) ──────────────────────────── */
+.lib-form-card {
+  background: var(--bg-card); border-radius: 16px; border: 1px solid var(--border);
+  padding: 24px; position: sticky; top: 16px;
+}
+.lib-form-card h3 { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.lib-form-mode-badge {
+  display: none; font-size: .75rem; padding: 3px 10px; border-radius: 12px; margin-bottom: 12px;
+  background: rgba(0,200,150,.1); border: 1px solid rgba(0,200,150,.3); color: var(--accent-green);
+  width: fit-content;
+}
+.lib-form-mode-badge.show { display: inline-block; }
+
+/* ── Category chips ──────────────────────────────────────────── */
+.lib-cat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.lib-cat-chip {
+  padding: 4px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary);
+  transition: all .15s;
+}
+.lib-cat-chip:hover { border-color: var(--accent-green); color: var(--accent-green); }
+.lib-cat-chip.active { background: rgba(0,200,150,.15); border-color: var(--accent-green); color: var(--accent-green); }
+.lib-cat-new-chip {
+  padding: 4px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; cursor: pointer;
+  border: 1px dashed var(--border); background: transparent; color: var(--text-muted);
+  transition: all .15s;
+}
+.lib-cat-new-chip:hover { border-color: var(--accent-green); color: var(--accent-green); }
+
+/* ── Form fields ─────────────────────────────────────────────── */
+.lib-field { margin-bottom: 10px; }
+.lib-field label { display: block; font-size: .78rem; color: var(--text-secondary); margin-bottom: 3px; font-weight: 600; }
+.lib-field input, .lib-field textarea {
+  width: 100%; padding: 8px 12px; background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-primary); font-size: .88rem; box-sizing: border-box;
+}
+.lib-field input:focus, .lib-field textarea:focus { outline: none; border-color: var(--accent-green); }
+.lib-field textarea {
+  font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: .8rem; line-height: 1.55;
+  resize: vertical; min-height: 460px;
+}
+.lib-top-row { display: grid; grid-template-columns: 68px 1fr 64px; gap: 10px; margin-bottom: 10px; }
+.lib-sandbox-row { display: flex; align-items: center; gap: 8px; margin: 10px 0 14px; }
+.lib-sandbox-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent-green); cursor: pointer; flex-shrink: 0; }
+.lib-sandbox-row label { font-size: .83rem; color: var(--text-secondary); cursor: pointer; margin: 0; }
+.lib-actions { display: flex; gap: 8px; }
+.lib-btn-submit { flex: 1; padding: 10px; background: var(--accent-green); color: #fff; border: none; border-radius: 8px; font-weight: 700; font-size: .9rem; cursor: pointer; }
+.lib-btn-submit:hover { background: #FF8C00; }
+.lib-btn-cancel { padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 8px; font-size: .9rem; cursor: pointer; }
+
+/* ── New category input row ──────────────────────────────────── */
+.lib-newcat-row { display: none; align-items: center; gap: 8px; margin-top: 8px; }
+.lib-newcat-row.show { display: flex; }
+.lib-newcat-row input { flex: 1; padding: 6px 10px; background: var(--bg-elevated); border: 1px solid var(--accent-green); border-radius: 8px; color: var(--text-primary); font-size: .85rem; }
+.lib-newcat-row input:focus { outline: none; }
+.lib-newcat-ok { padding: 6px 14px; background: var(--accent-green); color: #fff; border: none; border-radius: 8px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+
+/* ── Simple-format editor ────────────────────────────────────── */
+.lib-editor-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.lib-editor-tabs { display: flex; gap: 3px; }
+.lib-tab { padding: 3px 11px; border-radius: 5px; font-size: .73rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); transition: all .15s; }
+.lib-tab:hover { border-color: var(--accent-green); color: var(--accent-green); }
+.lib-tab.active { background: rgba(0,200,150,.15); border-color: var(--accent-green); color: var(--accent-green); }
+.lib-preview-pane {
+  min-height: 460px; padding: 14px 16px; background: var(--bg-elevated);
+  border: 1px solid var(--border); border-radius: 8px; overflow-y: auto; display: none;
+  font-size: .88rem; line-height: 1.6; color: var(--text-primary);
+}
+.lib-preview-pane.show { display: block; }
+.lib-preview-pane h2 { font-size: 1.1rem; color: var(--accent-green); margin: 0 0 10px; }
+.lib-preview-pane h3 { font-size: .95rem; color: var(--text-primary); font-weight: 700; margin: 14px 0 6px; }
+.lib-preview-pane p { color: var(--text-secondary); line-height: 1.65; margin: 0 0 10px; }
+.lib-preview-pane pre { background: var(--bg-card); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 10px 0; border: 1px solid var(--border); }
+.lib-preview-pane code { font-family: 'JetBrains Mono', monospace; font-size: .82rem; color: var(--accent-blue); }
+.lib-preview-pane pre code { display: block; }
+.lib-preview-pane .tip { background: rgba(255,102,0,.1); border-left: 3px solid var(--accent-green); border-radius: 0 8px 8px 0; padding: 10px 14px; color: var(--text-primary); font-size: .88rem; margin: 10px 0; }
+.lib-preview-pane ul, .lib-preview-pane ol { color: var(--text-secondary); padding-left: 20px; line-height: 1.8; margin: 0 0 10px; }
+.lib-preview-pane strong { color: var(--text-primary); }
+.lib-syntax-hint { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; }
+.lib-syntax-hint span { font-size: .7rem; color: var(--text-muted); }
+.lib-syntax-hint code { background: var(--bg-base); padding: 1px 5px; border-radius: 3px; color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; font-size: .7rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-admin">
+  <div class="page-header">
+    <h1>📖 Библиотека знаний</h1>
+    <p>Управление статьями для учеников</p>
+  </div>
+
+  <div class="lib-admin-layout">
+
+    <!-- ── Left: compact articles list ── -->
+    <div class="lib-articles-panel">
+      {% if categories %}
+        {% for cat_name, cat_articles in categories.items() %}
+        <div class="lib-cat-block">
+          <div class="lib-cat-title">
+            {{ cat_articles[0].icon if cat_articles else '📚' }}
+            {{ cat_name }}
+            <span style="margin-left:auto;font-weight:400;">{{ cat_articles|length }}</span>
+          </div>
+          {% for article in cat_articles %}
+          <div class="lib-article-row">
+            <div class="lib-article-row-icon">{{ article.icon }}</div>
+            <div class="lib-article-row-title" title="{{ article.title }}">{{ article.title }}</div>
+            <div class="lib-article-row-actions">
+              <button class="lib-btn-edit" onclick="startEdit({{ article.id }})">✏️</button>
+              <form method="POST" action="{{ url_for('admin_library_delete', article_id=article.id) }}"
+                    onsubmit="return confirm('Удалить «{{ article.title }}»?');" style="margin:0;">
+                <button type="submit" class="lib-btn-del">🗑</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="lib-cat-block">
+          <div class="empty-lib">Статей пока нет.</div>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- ── Right: add / edit form ── -->
+    <div class="lib-form-card">
+      <div class="lib-form-mode-badge" id="formBadge">✏️ Редактирование</div>
+      <h3 id="formTitle">➕ Новая статья</h3>
+
+      <!-- Category chips -->
+      <div style="margin: 10px 0 4px;">
+        <span style="font-size:.75rem;color:var(--text-muted);font-weight:600;">КАТЕГОРИЯ</span>
+      </div>
+      <div class="lib-cat-chips" id="catChips">
+        {% for cat in categories.keys() %}
+        <span class="lib-cat-chip" onclick="pickCategory('{{ cat }}')">{{ cat }}</span>
+        {% endfor %}
+        <span class="lib-cat-new-chip" onclick="showNewCat()">＋ Новая категория</span>
+      </div>
+      <div class="lib-newcat-row" id="newCatRow">
+        <input id="newCatInput" placeholder="Название новой категории" onkeydown="if(event.key==='Enter'){applyNewCat();event.preventDefault();}">
+        <button class="lib-newcat-ok" onclick="applyNewCat()">OK</button>
+      </div>
+
+      <form method="POST" id="articleForm" action="{{ url_for('admin_library_add') }}">
+        <!-- Hidden category field updated by chips -->
+        <input type="hidden" name="category" id="f_category" value="">
+
+        <div class="lib-top-row">
+          <div class="lib-field">
+            <label>Иконка</label>
+            <input name="icon" id="f_icon" value="📄" maxlength="5">
+          </div>
+          <div class="lib-field">
+            <label>Название *</label>
+            <input name="title" id="f_title" required placeholder="Название статьи">
+          </div>
+          <div class="lib-field">
+            <label>Порядок</label>
+            <input name="order" id="f_order" type="number" value="0">
+          </div>
+        </div>
+
+        <div class="lib-field">
+          <div class="lib-editor-header">
+            <label style="margin-bottom:0;">Содержимое</label>
+            <div class="lib-editor-tabs">
+              <button type="button" class="lib-tab active" id="tabWrite" onclick="setTab('write')">✏️ Редактор</button>
+              <button type="button" class="lib-tab" id="tabPreview" onclick="setTab('preview')">👁 Предпросмотр</button>
+            </div>
+          </div>
+          <textarea id="f_source"></textarea>
+          <div class="lib-preview-pane" id="f_preview"></div>
+          <input type="hidden" name="content" id="f_content">
+          <div class="lib-syntax-hint">
+            <span><code># Заголовок</code></span>
+            <span><code>## Подзаголовок</code></span>
+            <span><code>**жирный**</code></span>
+            <span><code>`inline код`</code></span>
+            <span><code>```</code> блок кода <code>```</code></span>
+            <span><code>> 💡 подсказка</code></span>
+            <span><code>- пункт</code> список</span>
+          </div>
+        </div>
+
+        <div class="lib-sandbox-row">
+          <input type="checkbox" name="has_sandbox" id="f_sandbox" checked>
+          <label for="f_sandbox">Показывать кнопку «Попробовать в песочнице»</label>
+        </div>
+
+        <div class="lib-actions">
+          <button type="submit" class="lib-btn-submit" id="formSubmitBtn">Добавить статью</button>
+          <button type="button" class="lib-btn-cancel" id="formCancelBtn" onclick="resetForm()" style="display:none;">Отмена</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/* ── Article data ── */
+const ARTICLE_DATA = {
+  {% for article in articles %}
+  {{ article.id }}: {
+    title:    {{ article.title    | tojson }},
+    content:  {{ article.content  | tojson }},
+    icon:     {{ article.icon     | tojson }},
+    category: {{ article.category | tojson }},
+    order:    {{ article.order }},
+    has_sandbox: {{ 'true' if article.has_sandbox else 'false' }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+
+const ADD_URL = {{ url_for('admin_library_add') | tojson }};
+
+/* ══════════════════════════════════════════════════════════════
+   Simple markup → HTML converter
+   ══════════════════════════════════════════════════════════════
+   # Heading          → <h2>
+   ## Subheading      → <h3>
+   > tip text         → <div class="tip">
+   - list item        → <ul><li>
+   ```lang / ```      → <pre><code>
+   **bold**           → <strong>
+   `inline code`      → <code>
+   blank line         → paragraph separator
+   ══════════════════════════════════════════════════════════════ */
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(s) {
+  return esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+}
+
+function toHtml(src) {
+  const lines = src.split('\n');
+  let html = '';
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trimEnd();
+
+    // Code block
+    if (line.startsWith('```')) {
+      const codeLines = [];
+      i++;
+      while (i < lines.length && !lines[i].trimEnd().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>\n';
+      i++; continue;
+    }
+
+    if (line.startsWith('# '))  { html += '<h2>' + fmt(line.slice(2))  + '</h2>\n';             i++; continue; }
+    if (line.startsWith('## ')) { html += '<h3>' + fmt(line.slice(3))  + '</h3>\n';             i++; continue; }
+    if (line.startsWith('> '))  { html += '<div class="tip">' + fmt(line.slice(2)) + '</div>\n'; i++; continue; }
+
+    // List
+    if (line.startsWith('- ')) {
+      html += '<ul>\n';
+      while (i < lines.length && lines[i].trimEnd().startsWith('- ')) {
+        html += '  <li>' + fmt(lines[i].trimEnd().slice(2)) + '</li>\n';
+        i++;
+      }
+      html += '</ul>\n';
+      continue;
+    }
+
+    // Blank line
+    if (line.trim() === '') { i++; continue; }
+
+    // Paragraph: accumulate consecutive text lines
+    const paraLines = [];
+    while (i < lines.length) {
+      const l = lines[i].trimEnd();
+      if (l.trim() === '' || l.startsWith('#') || l.startsWith('```') || l.startsWith('> ') || l.startsWith('- ')) break;
+      paraLines.push(l);
+      i++;
+    }
+    if (paraLines.length) html += '<p>' + fmt(paraLines.join(' ')) + '</p>\n';
+  }
+  return html;
+}
+
+/* ── HTML → simple format (for editing existing articles) ── */
+function nodeToSimple(el) {
+  let text = '';
+  for (const node of el.childNodes) {
+    if (node.nodeType === 3) { text += node.textContent; continue; }
+    if (node.nodeType !== 1) continue;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'strong' || tag === 'b') text += '**' + node.textContent + '**';
+    else if (tag === 'code') text += '`' + node.textContent + '`';
+    else text += node.textContent;
+  }
+  return text;
+}
+
+function fromHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  let out = '';
+  for (const node of tmp.childNodes) {
+    if (node.nodeType === 3) { const t = node.textContent.trim(); if (t) out += t + '\n\n'; continue; }
+    if (node.nodeType !== 1) continue;
+    const tag = node.tagName.toLowerCase();
+    if      (tag === 'h2')  out += '# '  + node.textContent.trim() + '\n\n';
+    else if (tag === 'h3')  out += '## ' + node.textContent.trim() + '\n\n';
+    else if (tag === 'pre') {
+      const code = node.querySelector('code');
+      out += '```\n' + (code ? code.textContent : node.textContent).trim() + '\n```\n\n';
+    }
+    else if (tag === 'div' && node.classList.contains('tip')) out += '> ' + node.textContent.trim() + '\n\n';
+    else if (tag === 'ul' || tag === 'ol') {
+      node.querySelectorAll('li').forEach(li => { out += '- ' + nodeToSimple(li) + '\n'; });
+      out += '\n';
+    }
+    else if (tag === 'p') out += nodeToSimple(node) + '\n\n';
+    else { const t = node.textContent.trim(); if (t) out += t + '\n\n'; }
+  }
+  return out.trim();
+}
+
+/* ── Editor tabs & live preview ── */
+function setTab(tab) {
+  const isPreview = tab === 'preview';
+  document.getElementById('f_source').style.display  = isPreview ? 'none' : 'block';
+  document.getElementById('f_preview').classList.toggle('show', isPreview);
+  document.getElementById('tabWrite').classList.toggle('active', !isPreview);
+  document.getElementById('tabPreview').classList.toggle('active', isPreview);
+  if (isPreview) updatePreview();
+}
+
+function updatePreview() {
+  document.getElementById('f_preview').innerHTML = toHtml(document.getElementById('f_source').value);
+}
+
+document.getElementById('f_source').addEventListener('input', function() {
+  if (document.getElementById('f_preview').classList.contains('show')) updatePreview();
+});
+
+document.getElementById('f_source').placeholder =
+  '# Заголовок раздела\n\nОбычный текст абзаца. **Жирный** и `код`.\n\n```\nprint("Привет!")\n```\n\n> 💡 Это подсказка\n\n- Первый пункт\n- Второй пункт';
+
+/* ── Convert to HTML before submit ── */
+document.getElementById('articleForm').addEventListener('submit', function() {
+  document.getElementById('f_content').value = toHtml(document.getElementById('f_source').value);
+});
+
+/* ── Category chips ── */
+function pickCategory(name) {
+  document.getElementById('f_category').value = name;
+  document.querySelectorAll('.lib-cat-chip').forEach(c => {
+    c.classList.toggle('active', c.textContent.trim() === name);
+  });
+  document.getElementById('newCatRow').classList.remove('show');
+}
+
+function showNewCat() {
+  document.getElementById('newCatRow').classList.toggle('show');
+  document.getElementById('newCatInput').focus();
+}
+
+function applyNewCat() {
+  const val = document.getElementById('newCatInput').value.trim();
+  if (!val) return;
+  document.getElementById('f_category').value = val;
+  const chips = document.getElementById('catChips');
+  const existing = [...chips.querySelectorAll('.lib-cat-chip')].find(c => c.textContent.trim() === val);
+  if (!existing) {
+    const chip = document.createElement('span');
+    chip.className = 'lib-cat-chip';
+    chip.textContent = val;
+    chip.onclick = () => pickCategory(val);
+    chips.insertBefore(chip, chips.lastElementChild);
+  }
+  pickCategory(val);
+  document.getElementById('newCatRow').classList.remove('show');
+  document.getElementById('newCatInput').value = '';
+}
+
+/* ── Edit mode ── */
+function startEdit(id) {
+  const a = ARTICLE_DATA[id];
+  if (!a) return;
+  document.getElementById('f_title').value      = a.title;
+  document.getElementById('f_source').value     = fromHtml(a.content);
+  document.getElementById('f_icon').value       = a.icon;
+  document.getElementById('f_order').value      = a.order;
+  document.getElementById('f_sandbox').checked  = a.has_sandbox;
+  pickCategory(a.category);
+  setTab('write');
+  document.getElementById('articleForm').action      = '/admin/library/' + id + '/edit';
+  document.getElementById('formTitle').textContent   = '✏️ Редактировать статью';
+  document.getElementById('formSubmitBtn').textContent = 'Сохранить изменения';
+  document.getElementById('formBadge').classList.add('show');
+  document.getElementById('formCancelBtn').style.display = '';
+  document.querySelector('.lib-form-card').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function resetForm() {
+  document.getElementById('articleForm').reset();
+  document.getElementById('f_source').value          = '';
+  document.getElementById('articleForm').action      = ADD_URL;
+  document.getElementById('formTitle').textContent   = '➕ Новая статья';
+  document.getElementById('formSubmitBtn').textContent = 'Добавить статью';
+  document.getElementById('formBadge').classList.remove('show');
+  document.getElementById('formCancelBtn').style.display = 'none';
+  document.getElementById('f_icon').value  = '📄';
+  document.getElementById('f_order').value = '0';
+  document.getElementById('f_category').value = '';
+  document.querySelectorAll('.lib-cat-chip').forEach(c => c.classList.remove('active'));
+  setTab('write');
+}
+</script>
+{% endblock %}

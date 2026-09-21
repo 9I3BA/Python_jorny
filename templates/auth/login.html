@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход | КодиК</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="auth-page" id="authBody">
+<button class="auth-theme-toggle" id="authThemeBtn" onclick="toggleTheme()" title="Сменить тему">🌙</button>
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-logo">🐱</div>
+      <h1 class="auth-title">КодиК</h1>
+      <p class="auth-subtitle">Платформа изучения программирования</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+          <div class="flash flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="auth-form" autocomplete="off">
+      <div class="form-group">
+        <label class="form-label">📧 Email</label>
+        <input type="email" name="email" class="form-input" placeholder="your@email.com" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">🔒 Пароль</label>
+        <input type="password" name="password" class="form-input" placeholder="••••••••" required autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Войти →</button>
+    </form>
+
+    <p class="auth-switch">Нет аккаунта? <a href="{{ url_for('register') }}">Зарегистрироваться</a></p>
+  </div>
+</div>
+<style>
+.auth-theme-toggle {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  background: var(--bg-card, #111D33);
+  border: 1px solid var(--border, #1E3560);
+  color: var(--text-primary, #F0F2F8);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .2s, border-color .2s, transform .2s;
+  z-index: 999;
+  padding: 0;
+}
+.auth-theme-toggle:hover { transform: scale(1.1); }
+</style>
+<script>
+(function() {
+  const theme = localStorage.getItem('kodikTheme') || 'dark';
+  if (theme === 'light') {
+    document.getElementById('authBody').classList.add('light-theme');
+    const btn = document.getElementById('authThemeBtn');
+    if (btn) btn.textContent = '☀️';
+  }
+})();
+function toggleTheme() {
+  const body = document.getElementById('authBody');
+  const isLight = body.classList.toggle('light-theme');
+  localStorage.setItem('kodikTheme', isLight ? 'light' : 'dark');
+  document.getElementById('authThemeBtn').textContent = isLight ? '☀️' : '🌙';
+}
+</script>
+</body>
+</html>

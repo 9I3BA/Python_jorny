@@ -1,0 +1,379 @@
+{% extends 'base.html' %}
+{% block title %}{{ level.title }}{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+{% endblock %}
+{% block content %}
+<div class="page-level">
+  <div class="level-header">
+    <a href="{{ url_for('student_module', module_id=level.module_id) }}" class="back-btn">← Модуль</a>
+    <div class="level-title-block">
+      <h1>{{ level.title }}</h1>
+      <span class="xp-badge">+{{ level.xp_reward }} XP</span>
+    </div>
+    {% if level.type == 'blocks' %}
+    <div class="difficulty-switch-level">
+      <button class="diff-btn-sm {% if difficulty == 'easy' %}active{% endif %}" id="btnEasy" onclick="switchDiff('easy')">🧩 Блоки</button>
+      <button class="diff-btn-sm {% if difficulty == 'hard' %}active{% endif %}" id="btnHard" onclick="switchDiff('hard')">⌨️ Код</button>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if level.type == 'theory' %}
+  <!-- ═══ THEORY ══════════════════════════════════════════════════════════ -->
+  <div class="theory-container">
+    <div class="theory-content">{{ level.theory_content | safe }}</div>
+    <button class="btn btn-primary btn-lg" onclick="completeTheory()">Прочитал! Продолжить ✓</button>
+  </div>
+
+  {% else %}
+  <!-- ═══ TASK ═════════════════════════════════════════════════════════════ -->
+  <div class="task-container">
+    <div class="task-description">
+      <h3>📋 Задание</h3>
+      <p>{{ level.task_description }}</p>
+      {% if level.expected_output %}
+      <div class="expected-output">
+        <strong>Ожидаемый результат:</strong>
+        <code>{{ level.expected_output }}</code>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- EASY: Block programming -->
+    <div id="blockMode" class="{% if difficulty == 'hard' or level.type == 'hard' %}hidden{% endif %}">
+      <div class="block-editor">
+        <div class="block-palette" id="blockPalette">
+          <h4>🧩 Блоки</h4>
+          <div class="palette-blocks" id="paletteBlocks"></div>
+        </div>
+        <div class="block-workspace-wrap">
+          <h4>🔧 Рабочая область</h4>
+          <div class="block-workspace" id="blockWorkspace">
+            <div class="workspace-hint" id="workspaceHint">Перетащи блоки сюда →</div>
+          </div>
+          <div class="block-controls">
+            <button class="btn btn-success" onclick="runBlocks()">▶ Запустить</button>
+            <button class="btn btn-secondary" onclick="clearWorkspace()">🗑️ Очистить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HARD: Code editor -->
+    <div id="codeMode" class="{% if difficulty == 'easy' and level.type != 'hard' %}hidden{% endif %}">
+      <div class="code-editor-wrap">
+        <div class="code-editor-header">
+          <span>🐍 Python</span>
+          <button class="btn btn-xs" onclick="clearCode()">Очистить</button>
+        </div>
+        <textarea id="codeEditor" class="code-editor" spellcheck="false" placeholder="# Пиши код здесь..."></textarea>
+        <div class="code-controls">
+          <button class="btn btn-success" onclick="runCode()">▶ Запустить код</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="output-panel" id="outputPanel" style="display:none">
+      <div class="output-header">
+        <span>📤 Вывод программы</span>
+        <button class="btn btn-xs" onclick="closeOutput()">✕</button>
+      </div>
+      <pre class="output-content" id="outputContent"></pre>
+      <div id="resultMsg" class="result-msg"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Theory popup -->
+  <div class="theory-popup" id="theoryPopup" style="display:none">
+    <div class="theory-popup-backdrop" onclick="closeTheory()"></div>
+    <div class="theory-popup-card">
+      <button class="theory-popup-close" onclick="closeTheory()">✕</button>
+      <h3 style="margin-bottom:12px">📖 Подсказка</h3>
+      <div class="theory-popup-content" id="theoryContent"></div>
+    </div>
+  </div>
+
+  <!-- Success overlay -->
+  <div class="success-overlay" id="successOverlay" style="display:none">
+    <div class="success-card">
+      <div class="success-emoji" id="successEmoji">🎉</div>
+      <h2 id="successTitle">Отлично!</h2>
+      <p id="successMsg"></p>
+      <div class="success-xp" id="successXp"></div>
+      <div id="newAchievements"></div>
+      <div class="success-btns">
+        <button class="btn btn-primary" onclick="nextLevel()">Следующий уровень →</button>
+        <button class="btn btn-secondary" onclick="closeSuccess()">Остаться</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/blocks.js') }}"></script>
+<script>
+const LEVEL_ID = {{ level.id }};
+const USER_ID  = {{ current_user.id }};
+const EXPECTED_OUTPUT = {{ level.expected_output | tojson if level.expected_output else 'null' }};
+let _lastRunCode = '';
+const BLOCKS_CONFIG = {{ blocks_config | tojson }};
+const LEVEL_TYPE = '{{ level.type }}';
+const MODULE_ID = {{ level.module_id }};
+const HINT = {{ level.hint | tojson }};
+const THEORY_HTML = {{ module_theory_content | tojson if module_theory_content else 'null' }};
+const TASK_DESC = {{ level.task_description | tojson if level.task_description else 'null' }};
+
+// localStorage keys are scoped to the specific user+level pair
+const SAVE_KEY_CODE   = 'u' + USER_ID + '_level_' + LEVEL_ID + '_code';
+const SAVE_KEY_BLOCKS = 'u' + USER_ID + '_level_' + LEVEL_ID + '_blocks';
+
+// Code editor — restore saved draft
+const _codeEditor = document.getElementById('codeEditor');
+if (_codeEditor) {
+  const savedCode = localStorage.getItem(SAVE_KEY_CODE);
+  if (savedCode !== null) _codeEditor.value = savedCode;
+  _codeEditor.addEventListener('input', () => {
+    localStorage.setItem(SAVE_KEY_CODE, _codeEditor.value);
+  });
+}
+
+function _saveBlocks() {
+  localStorage.setItem(SAVE_KEY_BLOCKS, JSON.stringify(getWorkspaceState()));
+}
+
+// Init block editor and restore saved blocks
+if (LEVEL_TYPE !== 'theory') {
+  initBlockEditor(BLOCKS_CONFIG.available || []);
+  // Save on structural changes (add/remove/reorder)
+  blockChangeCallback = _saveBlocks;
+  // Save on input changes inside blocks
+  const _ws = document.getElementById('blockWorkspace');
+  if (_ws) _ws.addEventListener('input', _saveBlocks);
+  // Restore saved blocks
+  const savedBlocks = localStorage.getItem(SAVE_KEY_BLOCKS);
+  if (savedBlocks) {
+    try { setWorkspaceState(JSON.parse(savedBlocks)); } catch(e) {}
+  }
+}
+
+function switchDiff(diff) {
+  fetch('/api/set-difficulty', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({difficulty: diff})
+  }).then(() => location.reload());
+}
+
+function clearCode() {
+  document.getElementById('codeEditor').value = '';
+  localStorage.removeItem(SAVE_KEY_CODE);
+}
+
+// Tab key → insert 4 spaces instead of losing focus
+(function() {
+  const ed = document.getElementById('codeEditor');
+  if (!ed) return;
+  ed.addEventListener('keydown', function(e) {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    const s = this.selectionStart, en = this.selectionEnd;
+    const indent = '    ';
+    if (s === en) {
+      // No selection — just insert 4 spaces
+      this.value = this.value.slice(0, s) + indent + this.value.slice(en);
+      this.selectionStart = this.selectionEnd = s + 4;
+    } else {
+      // Multi-line selection — indent/unindent each selected line
+      const lines = this.value.split('\n');
+      let pos = 0, firstLine = -1, lastLine = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (pos <= s && firstLine === -1) firstLine = i;
+        if (pos <= en) lastLine = i;
+        pos += lines[i].length + 1;
+      }
+      if (e.shiftKey) {
+        // Shift+Tab → remove up to 4 spaces from line start
+        for (let i = firstLine; i <= lastLine; i++) {
+          lines[i] = lines[i].replace(/^ {1,4}/, '');
+        }
+      } else {
+        for (let i = firstLine; i <= lastLine; i++) lines[i] = indent + lines[i];
+      }
+      this.value = lines.join('\n');
+    }
+  });
+})();
+
+function closeOutput() {
+  document.getElementById('outputPanel').style.display = 'none';
+}
+
+async function runCode() {
+  const code = document.getElementById('codeEditor').value;
+  if (!code.trim()) return;
+  _lastRunCode = code;
+  showOutput('⏳ Выполняю...', '');
+  const res = await fetch('/api/run-code', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code})
+  });
+  const data = await res.json();
+  if (data.error) {
+    showOutput(data.error, 'error');
+    return;
+  }
+  const out = (data.stdout || '').trim();
+  const err = (data.stderr || '').trim();
+  showOutput(out || err || '(нет вывода)', err ? 'error' : '');
+  if (!err && out) checkSolution(out);
+}
+
+async function runBlocks() {
+  const code = generateCodeFromBlocks();
+  if (!code) {
+    alert('Добавь блоки в рабочую область!');
+    return;
+  }
+  _lastRunCode = code;
+  showOutput('⏳ Выполняю...', '');
+  const res = await fetch('/api/run-code', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code})
+  });
+  const data = await res.json();
+  if (data.error) {
+    showOutput(data.error, 'error');
+    return;
+  }
+  const out = (data.stdout || '').trim();
+  const err = (data.stderr || '').trim();
+  showOutput(out || err || '(нет вывода)', err ? 'error' : '');
+  if (!err && out) checkSolution(out);
+}
+
+function showOutput(text, type) {
+  const panel = document.getElementById('outputPanel');
+  const content = document.getElementById('outputContent');
+  const msg = document.getElementById('resultMsg');
+  panel.style.display = 'block';
+  content.textContent = text;
+  msg.innerHTML = '';
+  if (type === 'error') {
+    content.style.color = '#ff7675';
+    msg.innerHTML = `<div class="result-error">
+      ❌ Ошибка! Не сдавайся — каждый программист ошибается! 💪
+      <button class="btn btn-sm btn-hint" onclick="showTheory()">📖 Показать теорию</button>
+    </div>`;
+  } else {
+    content.style.color = 'var(--text-primary)';
+  }
+}
+
+function checkSolution(output) {
+  if (!EXPECTED_OUTPUT) {
+    // Free-form level, just complete it
+    completeLevel();
+    return;
+  }
+  const expected = EXPECTED_OUTPUT.trim();
+  if (output === expected) {
+    completeLevel();
+  } else {
+    const msg = document.getElementById('resultMsg');
+    const motivations = [
+      "🤔 Почти! Проверь вывод — он должен быть точно как показано",
+      "💪 Не сдавайся! Ты на верном пути!",
+      "🌟 Отличная попытка! Попробуй ещё раз!",
+      "🎯 Совсем чуть-чуть! Внимательно сравни вывод",
+    ];
+    const tip = motivations[Math.floor(Math.random() * motivations.length)];
+    msg.innerHTML = `<div class="result-wrong">
+      ❌ Неверный ответ. ${tip}
+      <button class="btn btn-sm btn-hint" onclick="showTheory()">📖 Показать теорию</button>
+    </div>`;
+  }
+}
+
+async function completeLevel() {
+  const res = await fetch('/api/complete-level', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({level_id: LEVEL_ID, code: _lastRunCode})
+  });
+  const data = await res.json();
+  if (data.error === 'trivial') {
+    const msg = document.getElementById('resultMsg');
+    msg.innerHTML = `<div class="result-wrong">🚫 ${data.message}</div>`;
+    return;
+  }
+  showSuccess(data);
+}
+
+function completeTheory() {
+  fetch('/api/complete-level', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({level_id: LEVEL_ID})
+  }).then(r => r.json()).then(data => showSuccess(data));
+}
+
+function showSuccess(data) {
+  const overlay = document.getElementById('successOverlay');
+  const emojis = ['🎉','🌟','🏆','🚀','✨','🎊','👑'];
+  document.getElementById('successEmoji').textContent = emojis[Math.floor(Math.random() * emojis.length)];
+  const msgs = ['Превосходно!', 'Великолепно!', 'Блестяще!', 'Ты молодец!', 'Так держать!'];
+  document.getElementById('successTitle').textContent = msgs[Math.floor(Math.random() * msgs.length)];
+  document.getElementById('successMsg').textContent = data.already_completed
+    ? 'Этот уровень уже был пройден.'
+    : `Ты заработал ${data.xp_gained} опыта!`;
+  if (!data.already_completed) {
+    document.getElementById('successXp').textContent = `⭐ Всего XP: ${data.total_xp}  ·  Уровень: ${data.level}`;
+  }
+  if (data.new_achievements && data.new_achievements.length) {
+    const html = data.new_achievements.map(a =>
+      `<div class="new-ach">${a.icon} Новое достижение: ${a.name}</div>`
+    ).join('');
+    document.getElementById('newAchievements').innerHTML = html;
+  }
+  overlay.style.display = 'flex';
+}
+
+function closeSuccess() {
+  document.getElementById('successOverlay').style.display = 'none';
+}
+
+function nextLevel() {
+  {% if next_level %}
+  window.location.href = '{{ url_for("student_level", level_id=next_level.id) }}';
+  {% else %}
+  window.location.href = '{{ url_for("student_module", module_id=level.module_id) }}';
+  {% endif %}
+}
+
+function showTheory() {
+  const el = document.getElementById('theoryContent');
+  if (THEORY_HTML) {
+    el.innerHTML = THEORY_HTML;
+  } else if (TASK_DESC) {
+    el.innerHTML = '<p style="font-size:16px">📋 ' + TASK_DESC + '</p>';
+  } else {
+    el.innerHTML = '<p style="font-size:16px">💡 Попробуй ещё раз — ты справишься!</p>';
+  }
+  document.getElementById('theoryPopup').style.display = 'flex';
+}
+
+function closeTheory() {
+  document.getElementById('theoryPopup').style.display = 'none';
+}
+
+function clearWorkspace() {
+  clearBlocks();
+  document.getElementById('workspaceHint').style.display = 'block';
+  localStorage.removeItem(SAVE_KEY_BLOCKS);
+}
+</script>
+{% endblock %}

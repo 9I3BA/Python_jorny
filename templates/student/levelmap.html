@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+{% block title %}Карта знаний{% endblock %}
+{% block extra_css %}
+<style>
+.zz-wrap {
+  background: radial-gradient(ellipse at 40% 20%, #1a2c50 0%, #0B1120 70%);
+  border-radius: 20px; padding: 24px 16px; margin-bottom: 32px;
+  min-height: 400px; position: relative; overflow: hidden;
+}
+.zz-wrap::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.015'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+body.light-theme .zz-wrap {
+  background: radial-gradient(ellipse at 40% 20%, #B8D8F0 0%, #8DBEDD 70%);
+}
+body.light-theme .zz-wrap::before {
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.025'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-levelmap">
+  <div class="page-header">
+    <h1>🗺️ Карта знаний</h1>
+    <p class="page-subtitle">Выбери модуль и начни своё приключение с Кодиком!</p>
+  </div>
+
+  <!-- Zigzag Duolingo-style map -->
+  <div class="zz-wrap" id="zzWrap">
+    <div class="zz-container" id="zzContainer">
+      {% set module_list = modules | list %}
+      {% set xs = [240, 360, 400, 360, 240, 120, 80, 120, 240, 360, 400, 360, 240, 120, 80] %}
+      {% set row_h = 160 %}
+      {% set total_h = (module_list | length) * row_h + 40 %}
+
+      <!-- SVG paths -->
+      <svg class="zz-svg" viewBox="0 0 480 {{ total_h }}" style="height:{{ total_h }}px;">
+        {% for i in range(module_list | length - 1) %}
+          {% set m1 = module_list[i] %}
+          {% set m2 = module_list[i+1] %}
+          {% set x1 = xs[i] if i < xs | length else 240 %}
+          {% set x2 = xs[i+1] if i+1 < xs | length else 240 %}
+          {% set y1 = i * row_h + 80 %}
+          {% set y2 = (i+1) * row_h + 80 %}
+          {% set p1 = progress_map[m1.id] %}
+          {% set done1 = p1.done == p1.total and p1.total > 0 %}
+          <path class="{{ 'zz-path-done' if done1 else 'zz-path' }}"
+            d="M {{ x1 }} {{ y1 }} C {{ x1 }} {{ y1 + 80 }}, {{ x2 }} {{ y2 - 80 }}, {{ x2 }} {{ y2 }}"
+            stroke-dasharray="{{ '0' if done1 else '14,8' }}" />
+          {% if i % 4 == 3 %}
+            {% set midX = (x1 + x2) // 2 %}
+            {% set midY = (y1 + y2) // 2 %}
+            {% set bx = 55 if midX > 240 else 425 %}
+            <line class="zz-bonus-connector" x1="{{ midX }}" y1="{{ midY }}" x2="{{ bx }}" y2="{{ midY }}" />
+          {% endif %}
+        {% endfor %}
+      </svg>
+
+      <!-- Nodes -->
+      <div class="zz-nodes" style="height:{{ total_h }}px;">
+        {% for m in module_list %}
+          {% set i = loop.index0 %}
+          {% set p = progress_map[m.id] %}
+          {% set is_done = p.done == p.total and p.total > 0 %}
+          {% set prev_done = progress_map[module_list[i-1].id].done == progress_map[module_list[i-1].id].total if i > 0 else True %}
+          {% set is_locked = i > 0 and not prev_done %}
+          {% set x_pos = xs[i] if i < xs | length else 240 %}
+          {% set y_pos = i * row_h + 40 %}
+          <div class="zz-row" style="top:{{ y_pos }}px; position:absolute; width:100%;">
+            <div class="zz-node {{ 'done' if is_done else ('locked' if is_locked else 'available') }}"
+                 style="left:{{ x_pos }}px; top:0;"
+                 {% if not is_locked %}onclick="window.location='{{ url_for('student_module', module_id=m.id) }}'"{% endif %}
+                 title="{{ m.title }}">
+              <div class="zz-ring"></div>
+              <div class="zz-inner" style="background: {{ m.color if not is_locked else '#2a3a50' }}">
+                {{ '🔒' if is_locked else m.icon }}
+              </div>
+              {% if is_done %}
+              <div class="zz-done-badge">✓</div>
+              {% endif %}
+              <div class="zz-label">
+                {{ m.title }}
+                <div class="zz-progress">{{ p.done }}/{{ p.total }}</div>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+        <!-- Bonus challenge nodes — placed in free space opposite the path -->
+        {% for i in range(module_list | length - 1) %}
+          {% if i % 4 == 3 %}
+            {% set bonus_idx = i // 4 %}
+            {% if bonus_idx < bonus_modules | length %}
+              {% set bm = bonus_modules[bonus_idx] %}
+              {% set bp = progress_map[bm.id] %}
+              {% set bm_done = bp.done == bp.total and bp.total > 0 %}
+              {% set gate = progress_map[module_list[i].id] %}
+              {% set bonus_locked = not (gate.done == gate.total and gate.total > 0) %}
+              {% set x1 = xs[i] if i < xs | length else 240 %}
+              {% set x2 = xs[i+1] if i+1 < xs | length else 240 %}
+              {% set midX = (x1 + x2) // 2 %}
+              {% set bx = 55 if midX > 240 else 425 %}
+              {% set by = i * row_h + row_h // 2 + 80 %}
+              <div class="zz-bonus {{ 'bm-done' if bm_done else ('locked' if bonus_locked else '') }}"
+                   style="left:{{ bx }}px; top:{{ by }}px; {{ 'opacity:.35; cursor:default;' if bonus_locked else '' }}"
+                   {% if not bonus_locked %}onclick="window.location='{{ url_for('student_module', module_id=bm.id) }}'"{% endif %}
+                   title="{{ '🔒 Пройди модуль ' ~ module_list[i].title ~ ' чтобы открыть' if bonus_locked else bm.title }}">
+                <div class="zz-bonus-ring"></div>
+                <div class="zz-bonus-inner">{{ '✅' if bm_done else ('🔒' if bonus_locked else '⭐') }}</div>
+                <div class="zz-bonus-label">{{ bp.done }}/{{ bp.total }}</div>
+              </div>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <script>
+  (function() {
+    const MAP_W = 480;
+    function scaleMap() {
+      const wrap = document.getElementById('zzWrap');
+      const cont = document.getElementById('zzContainer');
+      if (!wrap || !cont) return;
+      // Force container to natural 480px so we can measure wrap against it
+      cont.style.width = MAP_W + 'px';
+      cont.style.transform = '';
+      wrap.style.height = '';
+      const wrapW = wrap.getBoundingClientRect().width;
+      const scale = Math.min(1, wrapW / MAP_W);
+      if (scale < 1) {
+        cont.style.transformOrigin = 'top left';
+        cont.style.transform = 'scale(' + scale + ')';
+        // Collapse layout whitespace that transform leaves behind
+        wrap.style.height = (cont.scrollHeight * scale + 48) + 'px';
+        wrap.style.overflow = 'hidden';
+      } else {
+        cont.style.transform = '';
+        cont.style.width = '';
+        wrap.style.height = '';
+        wrap.style.overflow = '';
+      }
+    }
+    requestAnimationFrame(scaleMap);
+    window.addEventListener('resize', scaleMap);
+  })();
+  </script>
+
+  <!-- Module list cards -->
+  <div class="modules-list">
+    <h2 class="section-title">📚 Все модули</h2>
+    <div class="modules-grid">
+      {% for m in modules %}
+        {% set p = progress_map[m.id] %}
+        {% set is_done = p.done == p.total and p.total > 0 %}
+        {% set prev_done = progress_map[modules[loop.index0 - 1].id].done == progress_map[modules[loop.index0 - 1].id].total if not loop.first else True %}
+        {% set is_locked = not loop.first and not prev_done %}
+        {% if not loop.first and loop.index0 % 4 == 0 %}
+          {% set bi = loop.index0 // 4 - 1 %}
+          {% if bi < bonus_modules | length %}
+            {% set bm = bonus_modules[bi] %}
+            {% set bp = progress_map[bm.id] %}
+            {% set bm_done = bp.done == bp.total and bp.total > 0 %}
+            {% set gate_m = modules[loop.index0 - 1] %}
+            {% set gate_p = progress_map[gate_m.id] %}
+            {% set bonus_locked = not (gate_p.done == gate_p.total and gate_p.total > 0) %}
+        <div class="module-divider"></div>
+        <div class="bonus-module-card {{ 'bm-done' if bm_done else ('locked' if bonus_locked else '') }}"
+             style="{{ 'opacity:.45; cursor:default;' if bonus_locked else '' }}"
+             {% if not bonus_locked %}onclick="window.location='{{ url_for('student_module', module_id=bm.id) }}'"{% endif %}>
+          <div class="bonus-module-icon">{{ '✅' if bm_done else ('🔒' if bonus_locked else '⭐') }}</div>
+          <div class="bonus-module-info">
+            <div class="bonus-module-title">{{ bm.title }}</div>
+            <div class="bonus-module-desc">{{ '🔒 Пройди предыдущие модули чтобы открыть' if bonus_locked else bm.description }}</div>
+          </div>
+          <div class="bonus-module-badge">{{ bp.done }}/{{ bp.total }} · +{{ bm.levels | length * 140 }} XP</div>
+        </div>
+          {% endif %}
+        {% endif %}
+        <div class="module-card {{ 'done' if is_done else ('locked' if is_locked else '') }}"
+             {% if not is_locked %}onclick="window.location='{{ url_for('student_module', module_id=m.id) }}'"{% endif %}>
+          <div class="module-icon" style="background: {{ m.color }}">{{ m.icon }}</div>
+          <div class="module-info">
+            <div class="module-title">{{ m.title }}</div>
+            <div class="module-desc">{{ m.description }}</div>
+            <div class="module-progress-bar">
+              <div class="module-progress-fill" style="width: {{ (p.done / p.total * 100) | int if p.total > 0 else 0 }}%; background: {{ m.color }}"></div>
+            </div>
+            <div class="module-stats">{{ p.done }}/{{ p.total }} уровней</div>
+          </div>
+          {% if is_locked %}
+          <div class="module-lock">🔒</div>
+          {% elif is_done %}
+          <div class="module-done">✅</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

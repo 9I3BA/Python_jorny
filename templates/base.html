@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}КодиК{% endblock %} | Учи Python с Кодиком!</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="role-{{ current_user.role if current_user.is_authenticated else 'guest' }}" id="mainBody">
+
+{% if current_user.is_authenticated %}
+<nav class="navbar">
+  <a class="nav-brand" href="{{ url_for('student_dashboard') if current_user.role == 'student' else url_for('teacher_dashboard') if current_user.role == 'teacher' else url_for('admin_dashboard') }}" style="text-decoration:none;">
+    <span class="brand-icon">🐱</span>
+    <span class="brand-name">КодиК</span>
+  </a>
+  <div class="nav-links">
+    {% if current_user.role == 'student' %}
+      <a href="{{ url_for('student_dashboard') }}" class="nav-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}">🏠 Главная</a>
+      <a href="{{ url_for('student_levelmap') }}" class="nav-link {% if request.endpoint == 'student_levelmap' %}active{% endif %}">🗺️ Карта</a>
+      <a href="{{ url_for('student_library') }}" class="nav-link {% if request.endpoint == 'student_library' %}active{% endif %}">📖 Библиотека</a>
+      <a href="{{ url_for('student_assignments') }}" class="nav-link {% if request.endpoint == 'student_assignments' %}active{% endif %}">
+        📝 Задания{% if nav_pending_assignments > 0 %}<span class="nav-badge">{{ nav_pending_assignments }}</span>{% endif %}
+      </a>
+      <a href="{{ url_for('student_chat') }}" class="nav-link {% if request.endpoint == 'student_chat' %}active{% endif %}">
+        💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge">{{ nav_unread_msgs }}</span>{% endif %}
+      </a>
+      <a href="{{ url_for('student_sandbox') }}" class="nav-link {% if request.endpoint == 'student_sandbox' %}active{% endif %}">🧪 Песочница</a>
+      <a href="{{ url_for('student_battlepass') }}" class="nav-link {% if request.endpoint == 'student_battlepass' %}active{% endif %}">🏆 Ранги</a>
+      <a href="{{ url_for('student_shop') }}" class="nav-link {% if request.endpoint == 'student_shop' %}active{% endif %}">🛒 Магазин</a>
+    {% elif current_user.role == 'teacher' %}
+      <a href="{{ url_for('teacher_dashboard') }}" class="nav-link {% if request.endpoint == 'teacher_dashboard' %}active{% endif %}">🏠 Главная</a>
+      <a href="{{ url_for('teacher_submissions') }}" class="nav-link {% if request.endpoint == 'teacher_submissions' %}active{% endif %}">📬 Работы</a>
+      <a href="{{ url_for('teacher_chat') }}" class="nav-link {% if request.endpoint == 'teacher_chat' %}active{% endif %}">💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge">{{ nav_unread_msgs }}</span>{% endif %}</a>
+    {% elif current_user.role == 'admin' %}
+      <a href="{{ url_for('admin_dashboard') }}" class="nav-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">🏠 Панель</a>
+      <a href="{{ url_for('admin_library') }}" class="nav-link {% if request.endpoint == 'admin_library' %}active{% endif %}">📖 Библиотека</a>
+      <a href="{{ url_for('admin_chat') }}" class="nav-link {% if request.endpoint == 'admin_chat' %}active{% endif %}">💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge">{{ nav_unread_msgs }}</span>{% endif %}</a>
+    {% elif current_user.role == 'parent' %}
+      <a href="{{ url_for('parent_dashboard') }}" class="nav-link {% if request.endpoint == 'parent_dashboard' %}active{% endif %}">🏠 Главная</a>
+      <a href="{{ url_for('parent_chat') }}" class="nav-link {% if request.endpoint == 'parent_chat' %}active{% endif %}">💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge">{{ nav_unread_msgs }}</span>{% endif %}</a>
+    {% endif %}
+  </div>
+  <div class="nav-user">
+    {% if current_user.role == 'student' %}
+    {% if current_user.streak > 0 %}
+    <div class="streak-badge">🔥 {{ current_user.streak }}</div>
+    {% endif %}
+    <div class="xp-pill">
+      <span>⭐ {{ current_user.xp }} XP</span>
+      <span class="lv-badge">Ур. {{ current_user.level }}</span>
+    </div>
+    {% endif %}
+    <button class="theme-toggle" onclick="toggleTheme()" title="Сменить тему" id="themeBtn">🌙</button>
+    <div class="user-menu">
+      <span class="user-avatar">{{ current_user.avatar_emoji }}</span>
+      <span class="user-name">{{ current_user.username }}</span>
+      <div class="dropdown-menu">
+        <a href="{{ url_for('logout') }}" class="dropdown-item">🚪 Выйти</a>
+      </div>
+    </div>
+  </div>
+  <button class="hamburger" id="hamburgerBtn" onclick="toggleMobileMenu()" aria-label="Меню">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- Mobile menu -->
+<div class="mobile-menu-overlay" id="mobileOverlay" onclick="closeMobileMenu()"></div>
+<div class="mobile-menu" id="mobileMenu">
+  <div class="mobile-menu-header">
+    <span>{{ current_user.avatar_emoji }} {{ current_user.username }}</span>
+    <button onclick="closeMobileMenu()" class="mobile-menu-close">✕</button>
+  </div>
+  {% if current_user.role == 'student' %}
+  <div class="mobile-xp-bar">
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">⭐ {{ current_user.xp }} XP · Уровень {{ current_user.level }}</div>
+    {% if current_user.streak > 0 %}<div style="font-size:13px;margin-bottom:4px;">🔥 Серия: {{ current_user.streak }} дней</div>{% endif %}
+    {% if nav_rank_label %}<div style="font-size:13px;margin-bottom:8px;">🏆 Ранг: <strong>{{ nav_rank_icon }} {{ nav_rank_label }}</strong></div>{% endif %}
+  </div>
+  <a href="{{ url_for('student_dashboard') }}" class="mobile-nav-link">🏠 Главная</a>
+  <a href="{{ url_for('student_levelmap') }}" class="mobile-nav-link">🗺️ Карта уровней</a>
+  <a href="{{ url_for('student_library') }}" class="mobile-nav-link">📖 Библиотека</a>
+  <a href="{{ url_for('student_assignments') }}" class="mobile-nav-link">
+    📝 Задания{% if nav_pending_assignments > 0 %}<span class="nav-badge nav-badge-mobile">{{ nav_pending_assignments }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('student_chat') }}" class="mobile-nav-link">
+    💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge nav-badge-mobile">{{ nav_unread_msgs }}</span>{% endif %}
+  </a>
+  <a href="{{ url_for('student_sandbox') }}" class="mobile-nav-link">🧪 Песочница</a>
+  <a href="{{ url_for('student_battlepass') }}" class="mobile-nav-link">🏆 Ранги</a>
+  <a href="{{ url_for('student_shop') }}" class="mobile-nav-link">🛒 Магазин</a>
+  {% elif current_user.role == 'teacher' %}
+  <a href="{{ url_for('teacher_dashboard') }}" class="mobile-nav-link">🏠 Главная</a>
+  <a href="{{ url_for('teacher_submissions') }}" class="mobile-nav-link">📬 Работы учеников</a>
+  <a href="{{ url_for('teacher_chat') }}" class="mobile-nav-link">💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge nav-badge-mobile">{{ nav_unread_msgs }}</span>{% endif %}</a>
+  {% elif current_user.role == 'admin' %}
+  <a href="{{ url_for('admin_dashboard') }}" class="mobile-nav-link">🏠 Панель</a>
+  <a href="{{ url_for('admin_library') }}" class="mobile-nav-link">📖 Библиотека</a>
+  <a href="{{ url_for('admin_chat') }}" class="mobile-nav-link">💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge nav-badge-mobile">{{ nav_unread_msgs }}</span>{% endif %}</a>
+  {% elif current_user.role == 'parent' %}
+  <a href="{{ url_for('parent_dashboard') }}" class="mobile-nav-link">🏠 Главная</a>
+  <a href="{{ url_for('parent_chat') }}" class="mobile-nav-link">💬 Чат{% if nav_unread_msgs > 0 %}<span class="nav-badge nav-badge-mobile">{{ nav_unread_msgs }}</span>{% endif %}</a>
+  {% endif %}
+  <div class="mobile-menu-footer">
+    <button onclick="toggleTheme()" class="mobile-theme-btn" id="themeBtnMobile">🌙 Сменить тему</button>
+    <a href="{{ url_for('logout') }}" class="mobile-nav-link mobile-logout">🚪 Выйти</a>
+  </div>
+</div>
+{% endif %}
+
+<main class="main-content">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-container">
+        {% for cat, msg in messages %}
+          <div class="flash flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+(function() {
+  const theme = localStorage.getItem('kodikTheme') || 'dark';
+  if (theme === 'light') {
+    document.getElementById('mainBody').classList.add('light-theme');
+    ['themeBtn','themeBtnMobile'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) b.textContent = '☀️ Сменить тему';
+    });
+    const b = document.getElementById('themeBtn');
+    if (b) b.textContent = '☀️';
+  }
+})();
+function toggleTheme() {
+  const body = document.getElementById('mainBody');
+  const isLight = body.classList.toggle('light-theme');
+  localStorage.setItem('kodikTheme', isLight ? 'light' : 'dark');
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = isLight ? '☀️' : '🌙';
+  const btnM = document.getElementById('themeBtnMobile');
+  if (btnM) btnM.textContent = isLight ? '☀️ Сменить тему' : '🌙 Сменить тему';
+}
+function toggleMobileMenu() {
+  document.getElementById('mobileMenu').classList.toggle('open');
+  document.getElementById('mobileOverlay').classList.toggle('open');
+  document.getElementById('hamburgerBtn').classList.toggle('open');
+}
+function closeMobileMenu() {
+  document.getElementById('mobileMenu').classList.remove('open');
+  document.getElementById('mobileOverlay').classList.remove('open');
+  document.getElementById('hamburgerBtn').classList.remove('open');
+}
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

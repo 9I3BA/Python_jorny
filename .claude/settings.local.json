@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install *)",
+      "Bash(python init_db.py)",
+      "Bash(python app.py)",
+      "Bash(curl -s http://127.0.0.1:5000/login)",
+      "Bash(python -c ' *)",
+      "Bash(Get-ChildItem -Path \"f:\\\\Python jorny\" -Recurse)",
+      "Bash(Select-Object -First 50)",
+      "Bash(python update_theory.py)",
+      "Bash(python -c \"from app import app; print\\('OK - routes:', sum\\(1 for _ in app.url_map.iter_rules\\(\\)\\)\\)\")",
+      "Bash(python -c \"from app import app; print\\('OK'\\)\")",
+      "Bash(python add_bonus_levels.py)",
+      "Bash(python -u -c ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
+    ]
+  }
+}

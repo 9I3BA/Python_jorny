@@ -1,0 +1,265 @@
+{% extends 'base.html' %}
+{% block title %}Работы учеников{% endblock %}
+{% block content %}
+<div class="page-submissions">
+  <div class="page-header">
+    <a href="{{ url_for('teacher_dashboard') }}" class="back-btn">← Назад</a>
+    <h1>📬 Работы учеников</h1>
+  </div>
+
+  <div class="sub-filter-bar" id="subFilterBar" style="display:none">
+    <span class="sub-filter-label">👤 Ученик:</span>
+    <div class="sub-filter-pills" id="subFilterPills"></div>
+  </div>
+
+  {% if assignments %}
+    {% set ns = namespace(any_subs=false) %}
+    {% for a in assignments %}
+      {% set subs = subs_map[a.id] %}
+      {% if subs %}{% set ns.any_subs = true %}{% endif %}
+      <div class="assignment-group">
+        <!-- Assignment header -->
+        <div class="asg-group-header">
+          <div class="asg-group-left">
+            <div class="asg-group-title">
+              📋 {{ a.title }}
+              {% if a.is_closed %}
+                <span class="badge badge-danger">🔒 Закрыто</span>
+              {% elif a.due_date %}
+                <span class="badge badge-info countdown-badge"
+                      data-due="{{ a.due_date.strftime('%Y-%m-%dT%H:%M:%S') }}">⏳ …</span>
+              {% else %}
+                <span class="badge badge-info">🟢 Открыто</span>
+              {% endif %}
+            </div>
+            {% if a.due_date %}
+            <div class="asg-group-due">Дедлайн: {{ a.due_date.strftime('%d.%m.%Y %H:%M') }} МСК</div>
+            {% endif %}
+            <div class="asg-group-count">{{ subs | length }} работ сдано</div>
+          </div>
+          <form method="POST" action="{{ url_for('teacher_toggle_close', assignment_id=a.id) }}">
+            <button type="submit" class="btn btn-sm {{ 'btn-success' if a.is_closed else 'btn-danger' }}">
+              {{ '🔓 Открыть приём' if a.is_closed else '🔒 Закрыть приём' }}
+            </button>
+          </form>
+        </div>
+
+        <!-- Submissions -->
+        {% if subs %}
+        <div class="submissions-list">
+          {% for sub in subs %}
+          <div class="submission-card {{ sub.status }}">
+            <div class="sub-header">
+              <div class="sub-student">👤 {{ sub.student.username }}</div>
+              <div class="sub-date">{{ sub.submitted_at.strftime('%d.%m.%Y %H:%M') }}</div>
+              <span class="badge badge-{{ 'success' if sub.status == 'graded' else 'warning' }}">
+                {{ '✅ Проверено' if sub.status == 'graded' else '⏳ На проверке' }}
+              </span>
+              {% if a.due_date and sub.submitted_at > a.due_date %}
+              <span class="badge badge-danger">🔴 Просрочено</span>
+              {% endif %}
+            </div>
+            {% if sub.content %}
+            <div class="sub-content">{{ sub.content }}</div>
+            {% endif %}
+            {% if sub.file_path %}
+            <div class="sub-file">📎 Файл: <a href="{{ url_for('teacher_download_file', filename=sub.file_path) }}" target="_blank">{{ sub.file_path }}</a></div>
+            {% endif %}
+            {% if sub.grade %}
+            <div class="sub-grade" id="gradeDisplay-{{ sub.id }}">
+              Оценка: <strong>{{ sub.grade }}</strong>{% if sub.feedback %} — {{ sub.feedback }}{% endif %}
+              <button class="btn btn-xs btn-secondary" style="margin-left:10px;" onclick="toggleEditGrade({{ sub.id }})">✏️ Изменить</button>
+            </div>
+            {% endif %}
+            {% if sub.status != 'graded' %}
+            <form method="POST" action="{{ url_for('teacher_grade', sub_id=sub.id) }}" class="grade-form">
+              <div class="grade-inputs">
+                <input type="number" name="grade" class="form-input form-input-sm" placeholder="Оценка (1–10)" min="1" step="1" required>
+                <input type="text" name="feedback" class="form-input" placeholder="Комментарий (опционально)" autocomplete="off">
+                <button type="submit" class="btn btn-success btn-sm">Выставить оценку</button>
+              </div>
+            </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('teacher_grade', sub_id=sub.id) }}" class="grade-form" id="editForm-{{ sub.id }}" style="display:none; margin-top:8px;">
+              <div class="grade-inputs">
+                <input type="number" name="grade" class="form-input form-input-sm" placeholder="Оценка (1–10)" min="1" step="1" value="{{ sub.grade }}" required>
+                <input type="text" name="feedback" class="form-input" placeholder="Комментарий (опционально)" value="{{ sub.feedback or '' }}" autocomplete="off">
+                <button type="submit" class="btn btn-success btn-sm">Сохранить</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEditGrade({{ sub.id }})">Отмена</button>
+              </div>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div style="padding:12px 16px; color:var(--text-muted); font-size:13px;">Работ ещё не сдано</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {% if not ns.any_subs %}
+    <div class="empty-page">
+      <div class="empty-icon">🎉</div>
+      <h2>Нет работ на проверке!</h2>
+      <p>Когда ученики сдадут задания, они появятся здесь.</p>
+    </div>
+    {% endif %}
+  {% else %}
+  <div class="empty-page">
+    <div class="empty-icon">📋</div>
+    <h2>Заданий нет</h2>
+    <p>Создайте задание, чтобы начать принимать работы.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<style>
+.assignment-group {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.asg-group-header {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.asg-group-left { display: flex; flex-direction: column; gap: 3px; }
+.asg-group-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.asg-group-due  { font-size: 12px; color: var(--text-muted); }
+.asg-group-count { font-size: 12px; color: var(--text-secondary); }
+.countdown-badge.urgent { background: rgba(255,85,85,.2); color: var(--accent-red); border-color: var(--accent-red); }
+.countdown-badge.closed-auto { background: rgba(255,85,85,.15); color: var(--accent-red); }
+.page-submissions .submissions-list { max-width: none; margin: 0; gap: 10px; }
+.page-submissions .submission-card { padding: 14px 16px; }
+
+.sub-filter-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 12px 16px; margin-bottom: 20px;
+}
+.sub-filter-label { font-size: 13px; color: var(--text-secondary); font-weight: 600; flex-shrink: 0; }
+.sub-filter-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.sub-filter-pill {
+  padding: 5px 14px; border-radius: 20px; border: 1.5px solid var(--border);
+  background: transparent; color: var(--text-secondary);
+  font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font);
+  transition: all .15s;
+}
+.sub-filter-pill:hover { border-color: var(--accent-orange); color: var(--accent-orange); }
+.sub-filter-pill.active {
+  border-color: var(--accent-orange); color: var(--accent-orange);
+  background: rgba(255,102,0,.12);
+}
+.sub-no-results {
+  text-align: center; color: var(--text-muted); padding: 32px 0; font-size: 14px;
+  display: none;
+}
+</style>
+<script>
+// ── Student filter ──────────────────────────────────────────────────────────
+(function buildStudentFilter() {
+  const names = new Set();
+  document.querySelectorAll('.sub-student').forEach(el => {
+    names.add(el.textContent.replace('👤', '').trim());
+  });
+  if (names.size < 2) return; // no filter needed for 0–1 students
+
+  const bar   = document.getElementById('subFilterBar');
+  const pills = document.getElementById('subFilterPills');
+  bar.style.display = 'flex';
+
+  function pill(label, onClick) {
+    const btn = document.createElement('button');
+    btn.className = 'sub-filter-pill';
+    btn.textContent = label;
+    btn.addEventListener('click', () => onClick(btn));
+    return btn;
+  }
+
+  const allBtn = pill('Все', btn => filterBy(null, btn));
+  allBtn.classList.add('active');
+  pills.appendChild(allBtn);
+
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, 'ru'));
+  sorted.forEach(name => pills.appendChild(pill(name, btn => filterBy(name, btn))));
+
+  // Insert "no results" placeholder after the filter bar
+  const noRes = document.createElement('div');
+  noRes.className = 'sub-no-results';
+  noRes.id = 'subNoResults';
+  noRes.textContent = '🔍 У этого ученика нет работ';
+  bar.insertAdjacentElement('afterend', noRes);
+
+  function filterBy(name, activeBtn) {
+    document.querySelectorAll('.sub-filter-pill').forEach(b => b.classList.remove('active'));
+    activeBtn.classList.add('active');
+
+    const groups = document.querySelectorAll('.assignment-group');
+    if (!name) {
+      groups.forEach(g => {
+        g.style.display = '';
+        g.querySelectorAll('.submission-card').forEach(c => c.style.display = '');
+      });
+      document.getElementById('subNoResults').style.display = 'none';
+      return;
+    }
+
+    let anyVisible = false;
+    groups.forEach(g => {
+      let hasMatch = false;
+      g.querySelectorAll('.submission-card').forEach(card => {
+        const match = card.querySelector('.sub-student')
+          ?.textContent.replace('👤', '').trim() === name;
+        card.style.display = match ? '' : 'none';
+        if (match) hasMatch = true;
+      });
+      g.style.display = hasMatch ? '' : 'none';
+      if (hasMatch) anyVisible = true;
+    });
+    document.getElementById('subNoResults').style.display = anyVisible ? 'none' : 'block';
+  }
+})();
+
+function toggleEditGrade(subId) {
+  const form = document.getElementById('editForm-' + subId);
+  const display = document.getElementById('gradeDisplay-' + subId);
+  const hidden = form.style.display === 'none';
+  form.style.display = hidden ? 'block' : 'none';
+  display.style.display = hidden ? 'none' : 'flex';
+  if (hidden) form.querySelector('input[name="grade"]').focus();
+}
+
+// Countdown timers
+function updateCountdowns() {
+  document.querySelectorAll('.countdown-badge[data-due]').forEach(el => {
+    const due = new Date(el.dataset.due + 'Z'); // treat as UTC (MSK stored as UTC+3 in DB)
+    // due_date is stored as UTC, MSK = UTC+3, so display difference correctly
+    const now = new Date();
+    const diff = due - now;
+    if (diff <= 0) {
+      el.textContent = '🔒 Закрыто (дедлайн истёк)';
+      el.classList.add('closed-auto');
+      return;
+    }
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    let txt = '⏳ ';
+    if (d > 0) txt += d + 'д ';
+    if (d > 0 || h > 0) txt += h + 'ч ';
+    txt += m + 'м ' + s + 'с';
+    el.textContent = txt;
+    if (diff < 3600000) el.classList.add('urgent');
+    else el.classList.remove('urgent');
+  });
+}
+updateCountdowns();
+setInterval(updateCountdowns, 1000);
+</script>
+{% endblock %}

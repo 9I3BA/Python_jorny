@@ -1,0 +1,403 @@
+{% extends 'base.html' %}
+{% block title %}Песочница{% endblock %}
+{% block extra_css %}
+<style>
+.sandbox-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.sandbox-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.sandbox-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.sandbox-sub {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.sandbox-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 700px) {
+  .sandbox-body { grid-template-columns: 1fr; }
+}
+.sandbox-editor-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.sandbox-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.sandbox-editor-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.sandbox-editor-actions { display: flex; gap: 8px; }
+.sandbox-editor {
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  border: none;
+  outline: none;
+  padding: 16px;
+  box-sizing: border-box;
+  tab-size: 4;
+}
+body.light-theme .sandbox-editor {
+  background: #f6f8fa;
+  color: #1f2328;
+}
+.sandbox-run-bar {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.sandbox-output-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 500px;
+}
+.sandbox-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.sandbox-output {
+  flex: 1;
+  padding: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+  min-height: 380px;
+}
+.sandbox-output.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-style: italic;
+}
+.sandbox-output.has-error { color: #ff7675; }
+.sandbox-hints {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+.sandbox-hints-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+.hint-chip {
+  display: inline-block;
+  margin: 4px 4px 4px 0;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.hint-chip:hover {
+  background: rgba(255,102,0,.12);
+  border-color: rgba(255,102,0,.4);
+  color: #FF6600;
+}
+.exit-code-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.exit-ok { background: rgba(0,200,100,.15); color: #00c864; }
+.exit-err { background: rgba(255,118,118,.15); color: #ff7675; }
+.stdin-section {
+  border-top: 1px solid var(--border);
+}
+.stdin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.stdin-header:hover { background: var(--bg-elevated); }
+.stdin-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.stdin-hint { font-size: 11px; color: var(--text-muted); }
+.stdin-toggle { font-size: 11px; color: var(--accent-orange, #FF6600); font-weight: 600; }
+.stdin-body { overflow: hidden; transition: max-height .2s; }
+.stdin-area {
+  width: 100%;
+  min-height: 72px;
+  max-height: 160px;
+  resize: vertical;
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  border: none;
+  outline: none;
+  padding: 10px 16px;
+  box-sizing: border-box;
+  display: block;
+}
+body.light-theme .stdin-area { background: #f0f4f8; color: #1f2328; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="sandbox-page">
+  <div class="sandbox-header">
+    <div style="font-size:36px">🧪</div>
+    <div>
+      <div class="sandbox-title">Песочница Python</div>
+      <div class="sandbox-sub">Пиши любой код и смотри результат прямо здесь!</div>
+    </div>
+  </div>
+
+  <div class="sandbox-hints">
+    <div class="sandbox-hints-title">💡 Быстрые примеры — нажми, чтобы вставить:</div>
+    <span class="hint-chip" onclick="insertSnippet('print')">print("Привет!")</span>
+    <span class="hint-chip" onclick="insertSnippet('for')">for i in range</span>
+    <span class="hint-chip" onclick="insertSnippet('math')">Математика</span>
+    <span class="hint-chip" onclick="insertSnippet('input')">input()</span>
+    <span class="hint-chip" onclick="insertSnippet('list')">Список</span>
+    <span class="hint-chip" onclick="insertSnippet('func')">Функция</span>
+    <span class="hint-chip" onclick="insertSnippet('ifelse')">if / else</span>
+    <span class="hint-chip" onclick="insertSnippet('while')">while</span>
+  </div>
+
+  <div class="sandbox-body">
+    <!-- Editor -->
+    <div class="sandbox-editor-wrap">
+      <div class="sandbox-editor-header">
+        <span class="sandbox-editor-label">🐍 Python</span>
+        <div class="sandbox-editor-actions">
+          <button class="btn btn-xs" onclick="clearEditor()">🗑️ Очистить</button>
+        </div>
+      </div>
+      <textarea id="sandboxEditor" class="sandbox-editor" spellcheck="false"
+        placeholder="# Пиши свой Python-код здесь...&#10;print(&quot;Привет, мир!&quot;)"></textarea>
+      <!-- stdin input section -->
+      <div class="stdin-section" id="stdinSection">
+        <div class="stdin-header" onclick="toggleStdin()">
+          <span class="stdin-label">📥 Ввод для input()</span>
+          <span class="stdin-hint">каждое значение на новой строке</span>
+          <span class="stdin-toggle" id="stdinToggleBtn">▼ скрыть</span>
+        </div>
+        <div class="stdin-body" id="stdinBody">
+          <textarea id="stdinInput" class="stdin-area"
+            placeholder="Вася&#10;18&#10;Москва"></textarea>
+        </div>
+      </div>
+
+      <div class="sandbox-run-bar">
+        <button class="btn btn-success" id="runBtn" onclick="runSandbox()">▶ Запустить</button>
+        <span id="runStatus" style="font-size:13px;color:var(--text-muted);align-self:center;"></span>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="sandbox-output-wrap">
+      <div class="sandbox-output-header">
+        <span>📤 Вывод программы</span>
+        <span id="exitBadge"></span>
+      </div>
+      <pre class="sandbox-output empty" id="sandboxOutput">Результат появится здесь...</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const editor = document.getElementById('sandboxEditor');
+const outputEl = document.getElementById('sandboxOutput');
+const runBtn = document.getElementById('runBtn');
+const runStatus = document.getElementById('runStatus');
+const exitBadge = document.getElementById('exitBadge');
+
+// Enter key: auto-indent matching current line, extra indent after ':'
+editor.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const pos = this.selectionStart;
+  const text = this.value;
+  const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+  const currentLine = text.slice(lineStart, pos);
+  const indent = currentLine.match(/^(\s*)/)[1];
+  const extra = currentLine.trimEnd().endsWith(':') ? '    ' : '';
+  const insert = '\n' + indent + extra;
+  this.value = text.slice(0, pos) + insert + text.slice(this.selectionEnd);
+  this.selectionStart = this.selectionEnd = pos + insert.length;
+});
+
+// Tab key support
+editor.addEventListener('keydown', function(e) {
+  if (e.key !== 'Tab') return;
+  e.preventDefault();
+  const s = this.selectionStart, en = this.selectionEnd;
+  const indent = '    ';
+  if (s === en) {
+    this.value = this.value.slice(0, s) + indent + this.value.slice(en);
+    this.selectionStart = this.selectionEnd = s + 4;
+  } else {
+    const lines = this.value.split('\n');
+    let pos = 0, firstLine = -1, lastLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (pos <= s && firstLine === -1) firstLine = i;
+      if (pos <= en) lastLine = i;
+      pos += lines[i].length + 1;
+    }
+    if (e.shiftKey) {
+      for (let i = firstLine; i <= lastLine; i++) lines[i] = lines[i].replace(/^ {1,4}/, '');
+    } else {
+      for (let i = firstLine; i <= lastLine; i++) lines[i] = indent + lines[i];
+    }
+    this.value = lines.join('\n');
+  }
+});
+
+// Ctrl+Enter / Cmd+Enter to run
+editor.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    runSandbox();
+  }
+});
+
+function clearEditor() {
+  editor.value = '';
+  editor.focus();
+}
+
+let _stdinOpen = true;
+function toggleStdin() {
+  _stdinOpen = !_stdinOpen;
+  document.getElementById('stdinBody').style.display = _stdinOpen ? '' : 'none';
+  document.getElementById('stdinToggleBtn').textContent = _stdinOpen ? '▼ скрыть' : '▶ показать';
+}
+
+const SNIPPETS = {
+  print:  'print("Привет, мир!")',
+  for:    'for i in range(5):\n    print(i)',
+  math:   'x = 10\ny = 3\nprint(x + y)\nprint(x * y)\nprint(x // y)',
+  input:  'name = input("Как тебя зовут? ")\nprint("Привет,", name)',
+  list:   'fruits = ["яблоко", "банан", "апельсин"]\nfor f in fruits:\n    print(f)',
+  func:   'def greet(name):\n    return "Привет, " + name + "!"\n\nprint(greet("Вася"))',
+  ifelse: 'age = 15\nif age >= 18:\n    print("Взрослый")\nelse:\n    print("Ещё молод!")',
+  while:  'n = 1\nwhile n <= 5:\n    print(n)\n    n += 1',
+};
+
+function insertSnippet(key) {
+  const code = SNIPPETS[key] || key;
+  editor.value = code;
+  editor.focus();
+  editor.selectionStart = editor.selectionEnd = code.length;
+  checkStdin();
+}
+
+async function runSandbox() {
+  const code = editor.value;
+  if (!code.trim()) return;
+  const stdin = document.getElementById('stdinInput').value;
+  runBtn.disabled = true;
+  runStatus.textContent = '⏳ Выполняю...';
+  outputEl.className = 'sandbox-output';
+  outputEl.textContent = '⏳ Выполняю...';
+  exitBadge.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/run-code', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code, stdin})
+    });
+    const data = await res.json();
+    runBtn.disabled = false;
+    runStatus.textContent = '';
+
+    if (data.error) {
+      outputEl.className = 'sandbox-output has-error';
+      outputEl.textContent = data.error;
+      exitBadge.innerHTML = '<span class="exit-code-badge exit-err">Ошибка</span>';
+      return;
+    }
+
+    const out = (data.stdout || '').trimEnd();
+    const err = (data.stderr || '').trimEnd();
+    const rc = data.returncode;
+
+    if (err) {
+      outputEl.className = 'sandbox-output has-error';
+      outputEl.textContent = err;
+      exitBadge.innerHTML = '<span class="exit-code-badge exit-err">Ошибка</span>';
+    } else if (out) {
+      outputEl.className = 'sandbox-output';
+      outputEl.textContent = out;
+      exitBadge.innerHTML = '<span class="exit-code-badge exit-ok">✓ OK</span>';
+    } else {
+      outputEl.className = 'sandbox-output empty';
+      outputEl.textContent = '(нет вывода)';
+      exitBadge.innerHTML = '<span class="exit-code-badge exit-ok">✓ OK</span>';
+    }
+  } catch (err) {
+    runBtn.disabled = false;
+    runStatus.textContent = '';
+    outputEl.className = 'sandbox-output has-error';
+    outputEl.textContent = 'Ошибка соединения с сервером';
+    exitBadge.innerHTML = '<span class="exit-code-badge exit-err">Ошибка</span>';
+  }
+}
+</script>
+{% endblock %}

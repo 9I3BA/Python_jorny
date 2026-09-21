@@ -1,0 +1,898 @@
+{% extends 'base.html' %}
+{% block title %}Панель администратора{% endblock %}
+{% block content %}
+<div class="page-admin">
+  <div class="page-header">
+    <h1>👑 Панель администратора</h1>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon stat-icon-green">🎒</div>
+      <div class="stat-value">{{ stats.students }}</div>
+      <div class="stat-label">Учеников</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon stat-icon-blue">👩‍🏫</div>
+      <div class="stat-value">{{ stats.teachers }}</div>
+      <div class="stat-label">Учителей</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon stat-icon-purple">👥</div>
+      <div class="stat-value">{{ stats.groups }}</div>
+      <div class="stat-label">Групп</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon stat-icon-pink">👪</div>
+      <div class="stat-value">{{ stats.parents }}</div>
+      <div class="stat-label">Родителей</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon stat-icon-yellow">📋</div>
+      <div class="stat-value">{{ stats.assignments }}</div>
+      <div class="stat-label">Заданий</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="admin-tabs">
+    <button class="admin-tab-btn active" onclick="switchTab('groups', this)">👥 Группы</button>
+    <button class="admin-tab-btn" onclick="switchTab('manage-groups', this)">⚙️ Управление группами</button>
+    <button class="admin-tab-btn" onclick="switchTab('users', this)">👤 Пользователи</button>
+    <button class="admin-tab-btn" onclick="switchTab('top', this)">🏆 Рейтинг</button>
+    <button class="admin-tab-btn" onclick="switchTab('links', this)">🔗 Привязка родителей</button>
+    <button class="admin-tab-btn" onclick="switchTab('exports', this)">📥 Выгрузка</button>
+    <button class="admin-tab-btn" onclick="switchTab('backups', this); loadBackups()">💾 Бекапы</button>
+  </div>
+
+  <!-- GROUPS tab -->
+  <div class="admin-tab-panel active" id="tab-groups">
+    <div class="admin-grid" style="margin-bottom:24px">
+      <div class="dash-section">
+        <h2 class="section-title">➕ Создать группу</h2>
+        <form method="POST" action="{{ url_for('admin_new_group') }}" class="inline-form">
+          <input type="text" name="name" class="form-input" placeholder="Название группы" required>
+          <select name="teacher_id" class="form-input">
+            <option value="">Без учителя</option>
+            {% for t in teachers %}
+            <option value="{{ t.id }}">{{ t.username }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-primary">Создать</button>
+        </form>
+      </div>
+      <div class="dash-section">
+        <h2 class="section-title">📊 Статистика группы</h2>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+          <select class="form-input" id="groupViewSelect" onchange="showGroupStats(this.value)" style="flex:1;min-width:160px;">
+            <option value="">— выбери группу —</option>
+            {% for g in groups %}
+            <option value="{{ g.id }}">{{ g.name }}</option>
+            {% endfor %}
+          </select>
+          <a id="exportGroupBtn" href="#" class="btn btn-sm btn-secondary" style="display:none;" target="_blank">
+            📥 Экспорт CSV
+          </a>
+        </div>
+        <div id="groupStatsArea">
+          <p style="color:var(--text-muted);font-size:14px;">Выбери группу, чтобы увидеть статистику учеников.</p>
+        </div>
+      </div>
+    </div>
+
+    {% if groups %}
+    {% for g in groups %}
+    <div class="group-detail-card">
+      <div class="group-detail-header" onclick="toggleGroup('grp-{{ g.id }}')">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:22px;">👥</span>
+          <div>
+            <div style="font-weight:700;font-size:16px;">{{ g.name }}</div>
+            <div style="font-size:13px;color:var(--text-secondary);">
+              {% if g.teacher_id %}👩‍🏫 {% for t in teachers %}{% if t.id == g.teacher_id %}{{ t.username }}{% endif %}{% endfor %}  · {% endif %}
+              {{ g.members | length }} учеников
+            </div>
+          </div>
+        </div>
+        <span style="color:var(--text-muted);font-size:18px;" id="arrow-grp-{{ g.id }}">▶</span>
+      </div>
+      <div class="group-detail-body" id="grp-{{ g.id }}">
+        <div class="group-members" style="margin-bottom:16px;">
+          {% for m in g.members %}
+            {% for s in students %}
+              {% if s.id == m.user_id %}
+                <span class="member-chip">{{ s.avatar_emoji }} {{ s.username }}</span>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+          {% if not g.members %}
+            <p style="color:var(--text-muted);font-size:14px;">Учеников нет</p>
+          {% endif %}
+        </div>
+        <form method="POST" action="{{ url_for('admin_add_student', group_id=g.id) }}" class="add-student-form" onsubmit="return validateAddStudent(this)">
+          <div class="student-search-wrap">
+            <input type="text" class="form-input form-input-sm student-search-input"
+                   placeholder="🔍 Найти ученика..." autocomplete="off"
+                   oninput="filterStudents(this)" onfocus="filterStudents(this)">
+            <input type="hidden" name="student_id" class="student-search-val">
+            <div class="student-search-results"></div>
+          </div>
+          <button type="submit" class="btn btn-sm btn-success">+ Добавить</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+      <div class="empty-state"><p>Групп пока нет</p></div>
+    {% endif %}
+  </div>
+
+  <!-- USERS tab -->
+  <div class="admin-tab-panel" id="tab-users">
+    <div class="user-filters">
+      <input type="text" id="userSearch" class="form-input user-search" placeholder="🔍 Поиск по имени или email..." oninput="filterUsers()">
+      <select id="roleFilter" class="form-input" style="min-width:150px;" onchange="filterUsers()">
+        <option value="">Все роли</option>
+        <option value="student">Ученики</option>
+        <option value="teacher">Учителя</option>
+        <option value="parent">Родители</option>
+        <option value="admin">Админы</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table" id="usersTable">
+        <thead>
+          <tr><th>Аватар</th><th>Имя</th><th>Email</th><th>Роль</th><th>XP</th><th>Дата</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for u in users %}
+        <tr data-name="{{ u.username | lower }}" data-email="{{ u.email | lower }}" data-role="{{ u.role }}">
+          <td>{{ u.avatar_emoji }}</td>
+          <td>{{ u.username }}</td>
+          <td>{{ u.email }}</td>
+          <td><span class="role-badge role-{{ u.role }}">{{ u.role }}</span></td>
+          <td>{{ u.total_xp }}</td>
+          <td>{{ u.created_at.strftime('%d.%m.%Y') }}</td>
+          <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              {% if u.id != current_user.id %}
+              <button class="btn btn-sm btn-secondary edit-user-btn"
+                data-id="{{ u.id }}" data-username="{{ u.username | e }}"
+                data-email="{{ u.email | e }}" data-role="{{ u.role }}">✏️ Изменить</button>
+              <button class="btn btn-sm btn-danger del-user-btn"
+                data-id="{{ u.id }}" data-username="{{ u.username | e }}">🗑 Удалить</button>
+              {% else %}
+              <span style="font-size:12px;color:var(--text-muted);align-self:center;">Это вы</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TOP tab -->
+  <div class="admin-tab-panel" id="tab-top">
+    <div class="dash-section" style="max-width:600px;">
+      <h2 class="section-title">🏆 Топ учеников по XP</h2>
+      <div class="leaderboard">
+        {% for i, s in top_students | enumerate %}
+        <div class="leaderboard-row">
+          <div class="lb-rank">{{ i + 1 }}</div>
+          <div class="lb-avatar">{{ s.avatar_emoji }}</div>
+          <div class="lb-name">{{ s.username }}</div>
+          <div class="lb-xp">⭐ {{ s.total_xp }} XP</div>
+          <div class="lb-bar">
+            {% set bar_w = (s.total_xp // 10) if (s.total_xp // 10) < 100 else 100 %}
+            <div class="lb-bar-fill" data-w="{{ bar_w }}"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- LINKS tab -->
+  <div class="admin-tab-panel" id="tab-links">
+    <div class="dash-section" style="max-width:700px;">
+      <h2 class="section-title">🔗 Привязка родителя к ребёнку</h2>
+      <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">
+        Выбери родителя и ученика, чтобы связать их аккаунты. Родитель сможет видеть прогресс ребёнка.
+      </p>
+      <form method="POST" action="{{ url_for('admin_link_parent') }}" class="parent-link-form">
+        <div style="flex:1;min-width:160px;">
+          <label class="form-label">Родитель</label>
+          <select name="parent_id" class="form-input" required>
+            <option value="">-- выбери родителя --</option>
+            {% for u in users %}
+              {% if u.role == 'parent' %}
+              <option value="{{ u.id }}">{{ u.username }} ({{ u.email }})</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1;min-width:160px;">
+          <label class="form-label">Ребёнок (ученик)</label>
+          <select name="student_id" class="form-input" required>
+            <option value="">-- выбери ученика --</option>
+            {% for s in students %}
+            <option value="{{ s.id }}">{{ s.username }} ({{ s.email }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="align-self:flex-end;">
+          <button type="submit" class="btn btn-primary">🔗 Привязать</button>
+        </div>
+      </form>
+
+      {% if linked_pairs %}
+      <h3 style="font-size:15px;margin-top:24px;margin-bottom:12px;">Существующие привязки</h3>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Родитель</th><th>Ребёнок</th><th></th></tr></thead>
+          <tbody>
+          {% for pair in linked_pairs %}
+          <tr>
+            <td>{{ pair.parent.avatar_emoji }} {{ pair.parent.username }}</td>
+            <td>{{ pair.child.avatar_emoji }} {{ pair.child.username }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('admin_unlink_parent', student_id=pair.child.id) }}">
+                <button type="submit" class="btn btn-xs btn-danger">Отвязать</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- MANAGE GROUPS tab -->
+  <div class="admin-tab-panel" id="tab-manage-groups">
+    {% if groups %}
+    {% for g in groups %}
+    <div class="group-detail-card" style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border-color);">
+        <div>
+          <div style="font-weight:700;font-size:16px;">👥 {{ g.name }}</div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-top:3px;">
+            {% if g.teacher_id %}
+              👩‍🏫 {% for t in teachers %}{% if t.id == g.teacher_id %}{{ t.username }}{% endif %}{% endfor %} ·
+            {% endif %}
+            {{ g.members | length }} учеников
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-secondary edit-group-btn"
+            data-id="{{ g.id }}" data-name="{{ g.name | e }}"
+            data-teacher="{{ g.teacher_id or '' }}">✏️ Изменить</button>
+          <button class="btn btn-sm btn-danger del-group-btn"
+            data-id="{{ g.id }}" data-name="{{ g.name | e }}">🗑 Удалить</button>
+        </div>
+      </div>
+      <div style="padding:14px 18px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;">Ученики:</div>
+        {% if g.members %}
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          {% for m in g.members %}
+            {% for s in students %}
+              {% if s.id == m.user_id %}
+              <div style="display:flex;align-items:center;gap:6px;background:var(--bg-elevated);border-radius:8px;padding:6px 12px;font-size:13px;">
+                <span>{{ s.avatar_emoji }} {{ s.username }}</span>
+                <button class="btn btn-xs btn-danger remove-student-btn"
+                  data-group="{{ g.id }}" data-student="{{ s.id }}"
+                  data-username="{{ s.username | e }}"
+                  style="padding:2px 7px;line-height:1.2;margin-left:4px;">✕</button>
+              </div>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </div>
+        {% else %}
+          <p style="color:var(--text-muted);font-size:13px;margin:0;">Учеников нет</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+      <div class="empty-state"><p>Групп пока нет</p></div>
+    {% endif %}
+  </div>
+
+  <!-- EXPORTS tab -->
+  <div class="admin-tab-panel" id="tab-exports">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;">
+
+      <!-- Export: group -->
+      <div class="dash-section">
+        <h2 class="section-title">📊 Статистика по группе</h2>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">
+          Ученики группы: имя, XP, пройденные уровни, сданные/несданные задания и оценки.
+        </p>
+        <select id="exportGroupSelect" class="form-input" style="margin-bottom:12px;">
+          <option value="">— выбери группу —</option>
+          {% for g in groups %}
+          <option value="{{ g.id }}">{{ g.name }}</option>
+          {% endfor %}
+        </select>
+        <a id="exportGroupLink" href="#" class="btn btn-primary btn-full export-btn export-btn-disabled"
+           onclick="return checkExportGroup()">📥 Скачать CSV — группа</a>
+      </div>
+
+      <!-- Export: all students -->
+      <div class="dash-section">
+        <h2 class="section-title">🎒 Все ученики платформы</h2>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">
+          Все ученики во всех группах: XP, уровни, задания. Полная сводная таблица.
+        </p>
+        <a href="{{ url_for('admin_export_all_students') }}" class="btn btn-primary btn-full" target="_blank">
+          📥 Скачать CSV — все ученики
+        </a>
+      </div>
+
+      <!-- Export: teacher -->
+      <div class="dash-section">
+        <h2 class="section-title">👩‍🏫 Работа учителя</h2>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">
+          Задания учителя, проверенные/непроверенные работы, оценки и комментарии к каждой сдаче.
+        </p>
+        <select id="exportTeacherSelect" class="form-input" style="margin-bottom:12px;">
+          <option value="">— выбери учителя —</option>
+          {% for t in teachers %}
+          <option value="{{ t.id }}">{{ t.username }}</option>
+          {% endfor %}
+        </select>
+        <a id="exportTeacherLink" href="#" class="btn btn-primary btn-full export-btn export-btn-disabled"
+           onclick="return checkExportTeacher()">📥 Скачать CSV — учитель</a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- BACKUPS tab -->
+  <div class="admin-tab-panel" id="tab-backups">
+    <div class="dash-section" style="max-width:820px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+        <div>
+          <h2 class="section-title" style="margin-bottom:4px;">💾 Резервные копии базы данных</h2>
+          <p style="font-size:13px;color:var(--text-muted);margin:0;">
+            Авто-бекап каждые <strong>6 часов</strong>. Хранится последние <strong>20</strong> копий.
+          </p>
+        </div>
+        <button class="btn btn-primary" id="createBackupBtn" onclick="createBackup()">
+          ➕ Создать бекап сейчас
+        </button>
+      </div>
+
+      <div id="backupStatus" style="margin-bottom:14px;font-size:13px;min-height:20px;"></div>
+
+      <div id="backupList">
+        <p style="color:var(--text-muted);font-size:14px;">Загрузка...</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+.export-btn-disabled { opacity: .45; pointer-events: none; }
+.backup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.backup-row:hover { background: var(--bg-elevated); }
+.backup-name { flex: 1; min-width: 180px; font-family: monospace; color: var(--text-secondary); font-size: 12px; }
+.backup-meta { color: var(--text-muted); white-space: nowrap; }
+.backup-label {
+  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px;
+  background: var(--bg-card); color: var(--text-muted); white-space: nowrap;
+}
+.backup-label.auto { background: #1a3a5c; color: #5ba8e8; }
+.backup-label.manual { background: #1a3a2c; color: #4ecb71; }
+.backup-label.pre { background: #3a2a1a; color: #e8a85b; }
+.backup-actions { display: flex; gap: 6px; }
+</style>
+</style>
+
+<script>
+document.getElementById('exportGroupSelect').addEventListener('change', function() {
+  const btn = document.getElementById('exportGroupLink');
+  if (this.value) {
+    btn.href = '/admin/export/group/' + this.value;
+    btn.classList.remove('export-btn-disabled');
+    btn.style.pointerEvents = '';
+  } else {
+    btn.href = '#';
+    btn.classList.add('export-btn-disabled');
+  }
+});
+function checkExportGroup() {
+  return !!document.getElementById('exportGroupSelect').value;
+}
+
+document.getElementById('exportTeacherSelect').addEventListener('change', function() {
+  const btn = document.getElementById('exportTeacherLink');
+  if (this.value) {
+    btn.href = '/admin/export/teacher/' + this.value;
+    btn.classList.remove('export-btn-disabled');
+    btn.style.pointerEvents = '';
+  } else {
+    btn.href = '#';
+    btn.classList.add('export-btn-disabled');
+  }
+});
+function checkExportTeacher() {
+  return !!document.getElementById('exportTeacherSelect').value;
+}
+</script>
+
+<style>
+.student-search-wrap { position: relative; min-width: 200px; flex: 1; }
+.student-search-results {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  z-index: 200;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+.ssr-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .12s;
+}
+.ssr-item:hover { background: var(--bg-card); }
+.ssr-empty { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
+.add-student-form { overflow: visible; }
+</style>
+
+<!-- Edit user modal -->
+<div class="modal-overlay" id="editUserModal" style="display:none" onclick="if(event.target===this)closeEditUser()">
+  <div class="modal-card" style="max-width:420px;width:95%;padding:28px 24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <span style="font-size:18px;font-weight:700;">✏️ Редактировать пользователя</span>
+      <button class="btn btn-xs btn-secondary" onclick="closeEditUser()">✕</button>
+    </div>
+    <input type="hidden" id="editUserId">
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">👤 Имя пользователя</label>
+      <input type="text" id="editUsername" class="form-input" placeholder="username">
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">📧 Email</label>
+      <input type="email" id="editEmail" class="form-input" placeholder="email@example.com">
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">🎭 Роль</label>
+      <select id="editRole" class="form-input">
+        <option value="student">🎒 Ученик</option>
+        <option value="teacher">👩‍🏫 Учитель</option>
+        <option value="parent">👪 Родитель</option>
+        <option value="admin">👑 Администратор</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:18px;">
+      <label class="form-label">🔒 Новый пароль <span style="font-size:12px;color:var(--text-muted);">(оставь пустым, чтобы не менять)</span></label>
+      <input type="password" id="editPassword" class="form-input" placeholder="••••••" autocomplete="new-password">
+    </div>
+    <div id="editUserError" style="color:var(--accent-red);font-size:13px;margin-bottom:12px;min-height:18px;"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="closeEditUser()">Отмена</button>
+      <button class="btn btn-primary" onclick="submitEditUser()">💾 Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete user confirmation modal -->
+<div class="modal-overlay" id="delUserModal" style="display:none" onclick="if(event.target===this)closeDelUser()">
+  <div class="modal-card" style="max-width:360px;text-align:center;padding:32px 28px;">
+    <div style="font-size:42px;margin-bottom:12px;">🗑️</div>
+    <div id="delUserTitle" style="font-size:17px;font-weight:700;margin-bottom:8px;"></div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;">Все данные пользователя будут удалены безвозвратно.</div>
+    <div style="display:flex;gap:12px;justify-content:center;">
+      <button class="btn btn-secondary" onclick="closeDelUser()">Отмена</button>
+      <button class="btn btn-danger" onclick="doDeleteUser()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit group modal -->
+<div class="modal-overlay" id="editGroupModal" style="display:none" onclick="if(event.target===this)closeEditGroup()">
+  <div class="modal-card" style="max-width:400px;width:95%;padding:28px 24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <span style="font-size:18px;font-weight:700;">✏️ Изменить группу</span>
+      <button class="btn btn-xs btn-secondary" onclick="closeEditGroup()">✕</button>
+    </div>
+    <input type="hidden" id="editGroupId">
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">👥 Название группы</label>
+      <input type="text" id="editGroupName" class="form-input" placeholder="Название группы">
+    </div>
+    <div class="form-group" style="margin-bottom:18px;">
+      <label class="form-label">👩‍🏫 Учитель</label>
+      <select id="editGroupTeacher" class="form-input">
+        <option value="">Без учителя</option>
+        {% for t in teachers %}
+        <option value="{{ t.id }}">{{ t.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div id="editGroupError" style="color:var(--accent-red);font-size:13px;margin-bottom:12px;min-height:18px;"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="closeEditGroup()">Отмена</button>
+      <button class="btn btn-primary" onclick="submitEditGroup()">💾 Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete group confirmation modal -->
+<div class="modal-overlay" id="delGroupModal" style="display:none" onclick="if(event.target===this)closeDelGroup()">
+  <div class="modal-card" style="max-width:360px;text-align:center;padding:32px 28px;">
+    <div style="font-size:42px;margin-bottom:12px;">🗑️</div>
+    <div id="delGroupTitle" style="font-size:17px;font-weight:700;margin-bottom:8px;"></div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;">Группа и все её задания будут удалены безвозвратно.</div>
+    <div style="display:flex;gap:12px;justify-content:center;">
+      <button class="btn btn-secondary" onclick="closeDelGroup()">Отмена</button>
+      <button class="btn btn-danger" onclick="doDeleteGroup()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Remove student confirmation modal -->
+<div class="modal-overlay" id="removeStudentModal" style="display:none" onclick="if(event.target===this)closeRemoveStudent()">
+  <div class="modal-card" style="max-width:360px;text-align:center;padding:32px 28px;">
+    <div style="font-size:42px;margin-bottom:12px;">👤</div>
+    <div id="removeStudentTitle" style="font-size:17px;font-weight:700;margin-bottom:8px;"></div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px;">Ученик будет исключён из группы.</div>
+    <div style="display:flex;gap:12px;justify-content:center;">
+      <button class="btn btn-secondary" onclick="closeRemoveStudent()">Отмена</button>
+      <button class="btn btn-danger" onclick="doRemoveStudent()">Исключить</button>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="groupStatsData">{{ group_student_stats | tojson }}</script>
+<script type="application/json" id="studentsData">[{% for s in students %}{"id":{{ s.id }},"u":{{ s.username | tojson }},"a":{{ s.avatar_emoji | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+<script>
+document.querySelectorAll('.lb-bar-fill[data-w]').forEach(el => {
+  el.style.width = el.dataset.w + '%';
+});
+
+const GROUP_STATS = JSON.parse(document.getElementById('groupStatsData').textContent);
+const STUDENTS_ALL = JSON.parse(document.getElementById('studentsData').textContent);
+
+function showGroupStats(groupId) {
+  const area = document.getElementById('groupStatsArea');
+  const exportBtn = document.getElementById('exportGroupBtn');
+  if (!groupId) {
+    area.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">Выбери группу, чтобы увидеть статистику учеников.</p>';
+    exportBtn.style.display = 'none';
+    return;
+  }
+  exportBtn.href = '/admin/export/group/' + groupId;
+  exportBtn.style.display = '';
+  const sel = document.getElementById('groupViewSelect');
+  const placeholder = sel.querySelector('option[value=""]');
+  if (placeholder) placeholder.disabled = true;
+  const rows = GROUP_STATS[groupId] || [];
+  if (!rows.length) {
+    area.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">В этой группе нет учеников.</p>';
+    return;
+  }
+  const totalAssign = rows[0].total_assignments;
+  area.innerHTML = `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Ученик</th>
+            <th>⭐ XP</th>
+            <th>✅ Уровней</th>
+            <th>📋 Сдано заданий</th>
+            <th>❌ Не сдано</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(s => `
+            <tr>
+              <td>${s.avatar} ${s.username}</td>
+              <td>${s.xp}</td>
+              <td>${s.completed}</td>
+              <td>${s.submitted} / ${totalAssign}</td>
+              <td>${totalAssign - s.submitted > 0
+                ? `<span style="color:var(--accent-red)">${totalAssign - s.submitted}</span>`
+                : '<span style="color:var(--accent-green)">0</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+function switchTab(name, btn) {
+  document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.admin-tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+function toggleGroup(id) {
+  const body = document.getElementById(id);
+  const arrow = document.getElementById('arrow-' + id);
+  const open = body.classList.toggle('open');
+  if (arrow) arrow.textContent = open ? '▼' : '▶';
+}
+function filterUsers() {
+  const q = document.getElementById('userSearch').value.toLowerCase();
+  const role = document.getElementById('roleFilter').value;
+  document.querySelectorAll('#usersTable tbody tr').forEach(row => {
+    const nameOk = !q || row.dataset.name.includes(q) || row.dataset.email.includes(q);
+    const roleOk = !role || row.dataset.role === role;
+    row.style.display = (nameOk && roleOk) ? '' : 'none';
+  });
+}
+
+function openEditUser(id, username, email, role) {
+  document.getElementById('editUserId').value = id;
+  document.getElementById('editUsername').value = username;
+  document.getElementById('editEmail').value = email;
+  document.getElementById('editRole').value = role;
+  document.getElementById('editPassword').value = '';
+  document.getElementById('editUserError').textContent = '';
+  document.getElementById('editUserModal').style.display = 'flex';
+}
+function closeEditUser() {
+  document.getElementById('editUserModal').style.display = 'none';
+}
+async function submitEditUser() {
+  const id = document.getElementById('editUserId').value;
+  const username = document.getElementById('editUsername').value.trim();
+  const email = document.getElementById('editEmail').value.trim();
+  const role = document.getElementById('editRole').value;
+  const password = document.getElementById('editPassword').value;
+  const errEl = document.getElementById('editUserError');
+  errEl.textContent = '';
+  if (!username || !email) { errEl.textContent = '⚠️ Заполните имя и email'; return; }
+  const res = await fetch(`/admin/user/${id}/edit`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ username, email, role, password })
+  });
+  const data = await res.json();
+  if (data.error) { errEl.textContent = '⚠️ ' + data.error; return; }
+  location.reload();
+}
+
+let _delUserId = null;
+function confirmDeleteUser(id, username) {
+  _delUserId = id;
+  document.getElementById('delUserTitle').textContent = `Удалить "${username}"?`;
+  document.getElementById('delUserModal').style.display = 'flex';
+}
+function closeDelUser() {
+  document.getElementById('delUserModal').style.display = 'none';
+  _delUserId = null;
+}
+async function doDeleteUser() {
+  if (!_delUserId) return;
+  const id = _delUserId;
+  closeDelUser();
+  const res = await fetch(`/admin/user/${id}/delete`, { method: 'POST' });
+  if (res.ok || res.redirected) location.reload();
+}
+
+document.addEventListener('click', e => {
+  // Student search result selection
+  const ssrItem = e.target.closest('.ssr-item');
+  if (ssrItem) {
+    const wrap = ssrItem.closest('.student-search-results').closest('.student-search-wrap');
+    wrap.querySelector('.student-search-input').value = ssrItem.dataset.name;
+    wrap.querySelector('.student-search-val').value = ssrItem.dataset.id;
+    ssrItem.closest('.student-search-results').style.display = 'none';
+    return;
+  }
+  // Close all student search dropdowns when clicking outside
+  if (!e.target.closest('.student-search-wrap')) {
+    document.querySelectorAll('.student-search-results').forEach(r => r.style.display = 'none');
+  }
+
+  const editUserBtn = e.target.closest('.edit-user-btn');
+  if (editUserBtn) {
+    openEditUser(editUserBtn.dataset.id, editUserBtn.dataset.username, editUserBtn.dataset.email, editUserBtn.dataset.role);
+    return;
+  }
+  const delUserBtn = e.target.closest('.del-user-btn');
+  if (delUserBtn) { confirmDeleteUser(delUserBtn.dataset.id, delUserBtn.dataset.username); return; }
+
+  const editGrpBtn = e.target.closest('.edit-group-btn');
+  if (editGrpBtn) { openEditGroup(editGrpBtn.dataset.id, editGrpBtn.dataset.name, editGrpBtn.dataset.teacher); return; }
+
+  const delGrpBtn = e.target.closest('.del-group-btn');
+  if (delGrpBtn) { confirmDeleteGroup(delGrpBtn.dataset.id, delGrpBtn.dataset.name); return; }
+
+  const remBtn = e.target.closest('.remove-student-btn');
+  if (remBtn) confirmRemoveStudent(remBtn.dataset.group, remBtn.dataset.student, remBtn.dataset.username);
+});
+
+function filterStudents(input) {
+  const q = input.value.toLowerCase().trim();
+  const wrap = input.closest('.student-search-wrap');
+  const results = wrap.querySelector('.student-search-results');
+  const matches = STUDENTS_ALL.filter(s => !q || s.u.toLowerCase().includes(q)).slice(0, 10);
+  if (!matches.length) {
+    results.innerHTML = '<div class="ssr-empty">Ничего не найдено</div>';
+    results.style.display = 'block';
+    return;
+  }
+  results.innerHTML = matches.map(s =>
+    `<div class="ssr-item" data-id="${s.id}" data-name="${s.u.replace(/"/g,'&quot;')}">${s.a} ${s.u}</div>`
+  ).join('');
+  results.style.display = 'block';
+}
+
+function validateAddStudent(form) {
+  const val = form.querySelector('.student-search-val').value;
+  if (!val) { form.querySelector('.student-search-input').focus(); return false; }
+  return true;
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeEditUser(); closeDelUser(); closeEditGroup(); closeDelGroup(); closeRemoveStudent(); }
+});
+
+// ── Group management ──────────────────────────────────────────────────────────
+function openEditGroup(id, name, teacherId) {
+  document.getElementById('editGroupId').value = id;
+  document.getElementById('editGroupName').value = name;
+  document.getElementById('editGroupTeacher').value = teacherId || '';
+  document.getElementById('editGroupError').textContent = '';
+  document.getElementById('editGroupModal').style.display = 'flex';
+}
+function closeEditGroup() { document.getElementById('editGroupModal').style.display = 'none'; }
+async function submitEditGroup() {
+  const id = document.getElementById('editGroupId').value;
+  const name = document.getElementById('editGroupName').value.trim();
+  const teacher_id = document.getElementById('editGroupTeacher').value || null;
+  const errEl = document.getElementById('editGroupError');
+  errEl.textContent = '';
+  if (!name) { errEl.textContent = '⚠️ Введите название группы'; return; }
+  const res = await fetch(`/admin/group/${id}/edit`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, teacher_id })
+  });
+  const data = await res.json();
+  if (data.error) { errEl.textContent = '⚠️ ' + data.error; return; }
+  location.reload();
+}
+
+let _delGroupId = null;
+function confirmDeleteGroup(id, name) {
+  _delGroupId = id;
+  document.getElementById('delGroupTitle').textContent = `Удалить группу "${name}"?`;
+  document.getElementById('delGroupModal').style.display = 'flex';
+}
+function closeDelGroup() { document.getElementById('delGroupModal').style.display = 'none'; _delGroupId = null; }
+async function doDeleteGroup() {
+  if (!_delGroupId) return;
+  const id = _delGroupId;
+  closeDelGroup();
+  const res = await fetch(`/admin/group/${id}/delete`, { method: 'POST' });
+  if (res.ok) location.reload();
+}
+
+let _remStudent = null;
+function confirmRemoveStudent(groupId, studentId, username) {
+  _remStudent = { groupId, studentId };
+  document.getElementById('removeStudentTitle').textContent = `Исключить "${username}" из группы?`;
+  document.getElementById('removeStudentModal').style.display = 'flex';
+}
+function closeRemoveStudent() { document.getElementById('removeStudentModal').style.display = 'none'; _remStudent = null; }
+async function doRemoveStudent() {
+  if (!_remStudent) return;
+  const { groupId, studentId } = _remStudent;
+  closeRemoveStudent();
+  const res = await fetch(`/admin/group/${groupId}/remove_student`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ student_id: studentId })
+  });
+  if (res.ok) location.reload();
+}
+
+// ── Backups ───────────────────────────────────────────────────────────────────
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(2) + ' MB';
+}
+
+async function loadBackups() {
+  const list = document.getElementById('backupList');
+  try {
+    const data = await (await fetch('/admin/backup/list')).json();
+    if (!data.length) {
+      list.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">Бекапов пока нет. Нажми «Создать бекап сейчас».</p>';
+      return;
+    }
+    list.innerHTML = data.map(b => {
+      const labelClass = b.label === 'авто' ? 'auto' : b.label === 'вручную' ? 'manual' : 'pre';
+      return `
+        <div class="backup-row" id="br-${CSS.escape(b.name)}">
+          <span class="backup-label ${labelClass}">${b.label || '?'}</span>
+          <span class="backup-name">${b.name}</span>
+          <span class="backup-meta">${b.mtime} &nbsp;·&nbsp; ${fmtSize(b.size)}</span>
+          <div class="backup-actions">
+            <a href="/admin/backup/download/${encodeURIComponent(b.name)}" class="btn btn-xs btn-secondary" title="Скачать">⬇️</a>
+            <button class="btn btn-xs btn-secondary" onclick="restoreBackup('${b.name}')" title="Восстановить">🔄</button>
+            <button class="btn btn-xs btn-danger" onclick="deleteBackup('${b.name}')" title="Удалить">🗑️</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<p style="color:var(--accent-red);font-size:14px;">Ошибка загрузки списка бекапов.</p>';
+  }
+}
+
+function setBackupStatus(msg, color) {
+  const el = document.getElementById('backupStatus');
+  el.innerHTML = `<span style="color:${color}">${msg}</span>`;
+  setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+
+async function createBackup() {
+  const btn = document.getElementById('createBackupBtn');
+  btn.disabled = true; btn.textContent = '⏳ Создаётся...';
+  try {
+    const res = await fetch('/admin/backup/create', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      setBackupStatus('✅ Бекап создан: ' + data.name, 'var(--accent-green)');
+      loadBackups();
+    } else {
+      setBackupStatus('❌ Ошибка: ' + data.error, 'var(--accent-red)');
+    }
+  } catch(e) {
+    setBackupStatus('❌ Ошибка соединения', 'var(--accent-red)');
+  }
+  btn.disabled = false; btn.textContent = '➕ Создать бекап сейчас';
+}
+
+async function restoreBackup(name) {
+  if (!confirm(`Восстановить базу данных из бекапа?\n\n${name}\n\nТекущее состояние будет сохранено в отдельный бекап (pre-restore) перед заменой.`)) return;
+  setBackupStatus('⏳ Восстановление...', 'var(--text-muted)');
+  try {
+    const res = await fetch('/admin/backup/restore/' + encodeURIComponent(name), { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      setBackupStatus('✅ База восстановлена. Страница перезагрузится...', 'var(--accent-green)');
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      setBackupStatus('❌ Ошибка: ' + data.error, 'var(--accent-red)');
+    }
+  } catch(e) {
+    setBackupStatus('❌ Ошибка соединения', 'var(--accent-red)');
+  }
+}
+
+async function deleteBackup(name) {
+  if (!confirm('Удалить бекап?\n\n' + name)) return;
+  const res = await fetch('/admin/backup/delete/' + encodeURIComponent(name), { method: 'POST' });
+  if ((await res.json()).ok) loadBackups();
+}
+</script>
+{% endblock %}

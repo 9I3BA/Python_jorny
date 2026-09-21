@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}{{ module.title }}{% endblock %}
+{% block content %}
+<div class="page-module">
+  <div class="module-header" style="border-color: {{ module.color }}">
+    <a href="{{ url_for('student_levelmap') }}" class="back-btn">← Карта</a>
+    <div class="module-header-icon" style="background: {{ module.color }}">{{ module.icon }}</div>
+    <div class="module-header-text">
+      <h1>{{ module.title }}</h1>
+      <p>{{ module.description }}</p>
+    </div>
+  </div>
+
+  <div class="levels-path">
+    {% for lv in levels %}
+    <div class="level-node-wrap">
+      {% if not loop.first %}
+      <div class="level-connector {{ 'done' if levels[loop.index0 - 1].status == 'completed' else '' }}"></div>
+      {% endif %}
+      <div class="level-node {{ lv.status }} {{ 'unlocked' if lv.unlocked else 'locked' }}"
+           {% if lv.unlocked %}onclick="window.location='{{ url_for('student_level', level_id=lv.id) }}'"{% endif %}>
+        <div class="level-node-inner">
+          {% if lv.status == 'completed' %}
+            <span class="level-node-icon">✅</span>
+          {% elif not lv.unlocked %}
+            <span class="level-node-icon">🔒</span>
+          {% elif lv.type == 'theory' %}
+            <span class="level-node-icon">📖</span>
+          {% elif lv.type == 'hard' %}
+            <span class="level-node-icon">⌨️</span>
+          {% else %}
+            <span class="level-node-icon">🧩</span>
+          {% endif %}
+        </div>
+        <div class="level-node-info">
+          <div class="level-node-num">{{ loop.index }}</div>
+          <div class="level-node-title">{{ lv.title }}</div>
+          <div class="level-node-xp">+{{ lv.xp_reward }} XP</div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Back to map button at bottom -->
+    <div class="level-node-wrap" style="margin-top: 8px;">
+      <div class="level-connector"></div>
+      <a href="{{ url_for('student_levelmap') }}" class="btn btn-secondary" style="padding: 12px 28px; font-size: 15px;">
+        🗺️ Вернуться к карте
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

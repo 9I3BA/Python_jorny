@@ -1,0 +1,405 @@
+{% extends 'base.html' %}
+{% block title %}Ранговая система{% endblock %}
+{% block extra_css %}
+<style>
+/* ── Rank System Page ─────────────────────────────────────────────────────── */
+.page-battlepass { max-width: 900px; margin: 0 auto; }
+
+/* Top info bar */
+.bp-hero {
+  background: linear-gradient(135deg, #1a0d00 0%, #111D33 100%);
+  border: 1px solid rgba(255,102,0,.35);
+  border-radius: 16px;
+  padding: 24px 28px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+body.light-theme .bp-hero {
+  background: linear-gradient(135deg, #CCE8F8 0%, #C5E2F5 100%);
+  border-color: rgba(255,102,0,.3);
+}
+.bp-hero-icon { font-size: 48px; line-height: 1; flex-shrink: 0; }
+.bp-hero-info { flex: 1; }
+.bp-hero-title { font-size: 22px; font-weight: 700; color: #FF6600; margin-bottom: 4px; }
+.bp-hero-sub { color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; }
+.bp-xp-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bp-xp-badge {
+  background: rgba(255,102,0,.15);
+  border: 1px solid rgba(255,102,0,.4);
+  color: #FF6600;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 6px 14px;
+  border-radius: 20px;
+}
+.bp-xp-of { color: var(--text-muted); font-size: 13px; }
+.bp-pct {
+  background: rgba(51,187,255,.12);
+  border: 1px solid rgba(51,187,255,.3);
+  color: #33BBFF;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 10px;
+}
+.bp-current-tier {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  color: var(--text-secondary); font-size: 13px;
+}
+.bp-current-tier-badge {
+  font-size: 15px; font-weight: 700;
+  background: rgba(255,215,0,.15);
+  border: 1px solid rgba(255,215,0,.4);
+  color: #FFD700;
+  padding: 3px 10px;
+  border-radius: 10px;
+}
+body.light-theme .bp-current-tier-badge {
+  background: rgba(138,96,0,.1);
+  border-color: rgba(138,96,0,.35);
+  color: #8A6000;
+}
+
+/* Map wrapper */
+.bp-map-wrap {
+  background: radial-gradient(ellipse at 40% 20%, #1a2c50 0%, #0B1120 70%);
+  border-radius: 20px;
+  padding: 24px 16px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+body.light-theme .bp-map-wrap {
+  background: linear-gradient(135deg, #C8E4F5 0%, #D0EAF8 100%);
+}
+.bp-map-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.015'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.bp-map-container {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  aspect-ratio: 480 / 640;
+}
+
+/* SVG path */
+.bp-svg {
+  position: absolute;
+  top: 0; left: 0;
+  display: block;
+  width: 100%; height: 100%;
+}
+.bp-path-bg {
+  stroke: #1E3050;
+  stroke-width: 10;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+body.light-theme .bp-path-bg { stroke: #C8D8EE; }
+.bp-path-progress {
+  stroke: url(#bpGrad);
+  stroke-width: 10;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1);
+}
+
+/* Nodes */
+.bp-nodes {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+.bp-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: all;
+  cursor: default;
+  width: 72px;
+}
+.bp-node-ring {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  position: relative;
+  transition: transform .2s;
+  border: 3px solid transparent;
+}
+.bp-node:hover .bp-node-ring { transform: scale(1.12); }
+
+.bp-node.reached .bp-node-ring {
+  background: radial-gradient(135deg, #3a2800, #1a1400);
+  border-color: #FFD700;
+  box-shadow: 0 0 14px rgba(255,215,0,.5);
+}
+.bp-node.current .bp-node-ring {
+  background: radial-gradient(135deg, #002244, #001833);
+  border-color: #33BBFF;
+  box-shadow: 0 0 18px rgba(51,187,255,.7), 0 0 6px rgba(51,187,255,.4);
+  animation: bpPulse 2s ease-in-out infinite;
+}
+.bp-node.locked .bp-node-ring {
+  background: #0D1E32;
+  border-color: #1E3050;
+  filter: grayscale(1) opacity(.45);
+}
+body.light-theme .bp-node.reached .bp-node-ring {
+  background: linear-gradient(135deg,#FFF3CD,#FFF8E8);
+  border-color: #8A6000;
+  box-shadow: 0 0 10px rgba(138,96,0,.3);
+}
+body.light-theme .bp-node.reached .bp-node-label { color: #8A6000; }
+body.light-theme .bp-node.current .bp-node-ring { background: linear-gradient(135deg,#E3F2FD,#EEF7FF); }
+body.light-theme .bp-node.locked  .bp-node-ring { background: #D0DCF0; border-color: #B0C4DE; }
+
+@keyframes bpPulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(51,187,255,.7), 0 0 6px rgba(51,187,255,.4); }
+  50%       { box-shadow: 0 0 28px rgba(51,187,255,.9), 0 0 10px rgba(51,187,255,.6); }
+}
+
+.bp-node-label {
+  margin-top: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-secondary);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.bp-node-text { display: flex; flex-direction: column; }
+.bp-node.reached .bp-node-label { color: #FFD700; }
+.bp-node.current .bp-node-label { color: #33BBFF; }
+.bp-node-xp {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  text-align: center;
+}
+
+/* Check badge for reached */
+.bp-check {
+  position: absolute;
+  top: -4px; right: -4px;
+  width: 18px; height: 18px;
+  background: #FFD700;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+  font-weight: 900;
+  color: #000;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+
+/* Responsive node sizing for small screens */
+@media (max-width: 400px) {
+  .bp-node-ring { width: 40px; height: 40px; font-size: 18px; }
+  .bp-node { width: 56px; }
+  .bp-node-label { font-size: 9px; }
+  .bp-node-xp { font-size: 7px; }
+  .bp-check { width: 14px; height: 14px; font-size: 8px; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-battlepass">
+
+  <!-- Hero bar -->
+  <div class="bp-hero">
+    <div class="bp-hero-icon">🎖️</div>
+    <div class="bp-hero-info">
+      <div class="bp-hero-title">🏆 Ранговая система</div>
+      <div class="bp-hero-sub">Зарабатывай XP, повышай ранг и стань настоящим питонистом!</div>
+      <div class="bp-xp-row">
+        <span class="bp-xp-badge">{{ user_xp }} XP</span>
+        <span class="bp-xp-of">из {{ max_xp }} XP</span>
+        <span class="bp-pct" id="bpPctBadge">0%</span>
+      </div>
+      <div class="bp-current-tier">
+        Текущий ранг:
+        <span class="bp-current-tier-badge" id="bpCurrentTierLabel">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zigzag map -->
+  <div class="bp-map-wrap" id="bpWrap">
+    <div class="bp-map-container" id="bpContainer">
+      <!-- SVG path -->
+      <svg class="bp-svg" id="bpSvg" viewBox="0 0 480 640" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="bpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#FF6600"/>
+            <stop offset="50%"  stop-color="#FFD700"/>
+            <stop offset="100%" stop-color="#FF6600"/>
+          </linearGradient>
+        </defs>
+        <!-- Background path -->
+        <polyline id="bpPathBg" class="bp-path-bg" points=""/>
+        <!-- Progress path -->
+        <polyline id="bpPathProg" class="bp-path-progress"
+                  points="" stroke-dasharray="0" stroke-dashoffset="0"/>
+      </svg>
+      <!-- Nodes -->
+      <div class="bp-nodes" id="bpNodes"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const USER_XP = {{ user_xp }};
+  const MAX_XP  = {{ max_xp }};
+
+  /* 20 tiers */
+  const TIERS = [
+    { pct: 0.03, icon: '🌱', label: 'Росток',      color: '#4CAF50' },
+    { pct: 0.07, icon: '🐣', label: 'Птенчик',     color: '#8BC34A' },
+    { pct: 0.12, icon: '⚡', label: 'Заряд',       color: '#FFEB3B' },
+    { pct: 0.18, icon: '🌟', label: 'Новичок',     color: '#FFC107' },
+    { pct: 0.25, icon: '🐱', label: 'Кодёнок',     color: '#FF9800' },
+    { pct: 0.33, icon: '🔥', label: 'Горячо!',     color: '#FF5722' },
+    { pct: 0.41, icon: '💫', label: 'Вспышка',     color: '#E91E63' },
+    { pct: 0.49, icon: '🎯', label: 'Стрелок',     color: '#9C27B0' },
+    { pct: 0.56, icon: '💎', label: 'Алмаз',       color: '#673AB7' },
+    { pct: 0.63, icon: '🚀', label: 'Ракета',      color: '#3F51B5' },
+    { pct: 0.70, icon: '🏅', label: 'Медаль',      color: '#2196F3' },
+    { pct: 0.76, icon: '🏆', label: 'Чемпион',     color: '#03A9F4' },
+    { pct: 0.82, icon: '🌊', label: 'Прибой',      color: '#00BCD4' },
+    { pct: 0.87, icon: '👑', label: 'Корона',      color: '#009688' },
+    { pct: 0.91, icon: '🌈', label: 'Радуга',      color: '#4CAF50' },
+    { pct: 0.94, icon: '🦁', label: 'Лев',         color: '#FF9800' },
+    { pct: 0.96, icon: '🐉', label: 'Дракон',      color: '#FF5722' },
+    { pct: 0.98, icon: '⭐', label: 'Суперзвезда', color: '#FFD700' },
+    { pct: 0.99, icon: '🔮', label: 'Мастер',      color: '#A0A0FF' },
+    { pct: 1.00, icon: '🐱', label: 'КодиК!',      color: '#FF6600' },
+  ];
+
+  /* Snake grid positions: 5 cols × 4 rows, 480×640 canvas
+     Row 0: left→right  y=80
+     Row 1: right→left  y=230
+     Row 2: left→right  y=380
+     Row 3: right→left  y=530  */
+  const COL_XS = [50, 148, 240, 332, 430];
+  const ROW_YS = [80, 230, 380, 530];
+  const xs = [], ys = [];
+  for (let row = 0; row < 4; row++) {
+    const cols = row % 2 === 0 ? COL_XS : [...COL_XS].reverse();
+    for (let c = 0; c < 5; c++) {
+      xs.push(cols[c]);
+      ys.push(ROW_YS[row]);
+    }
+  }
+
+  /* Segment distances between consecutive nodes */
+  const segDists = [];
+  for (let i = 0; i < 19; i++) {
+    const dx = xs[i+1] - xs[i];
+    const dy = ys[i+1] - ys[i];
+    segDists.push(Math.sqrt(dx*dx + dy*dy));
+  }
+  const cumDists = [0];
+  for (let d of segDists) cumDists.push(cumDists[cumDists.length-1] + d);
+  const TOTAL = cumDists[19];
+
+  /* XP threshold for each tier */
+  const tierXPs = TIERS.map(t => Math.round(t.pct * MAX_XP));
+
+  /* Progress fraction → path distance */
+  function xpToDist(xp) {
+    const frac = Math.min(1, Math.max(0, xp / MAX_XP));
+    return frac * TOTAL;
+  }
+  const progressDist = xpToDist(USER_XP);
+
+  /* Build polyline points string */
+  const pts = xs.map((x, i) => x + ',' + ys[i]).join(' ');
+
+  /* Render background path */
+  const pathBg   = document.getElementById('bpPathBg');
+  const pathProg = document.getElementById('bpPathProg');
+  pathBg.setAttribute('points', pts);
+  pathProg.setAttribute('points', pts);
+
+  /* Animate progress using stroke-dasharray trick */
+  pathProg.setAttribute('stroke-dasharray', TOTAL);
+  pathProg.setAttribute('stroke-dashoffset', TOTAL); // start hidden
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      pathProg.style.strokeDashoffset = TOTAL - progressDist;
+    });
+  });
+
+  /* Render nodes */
+  const container = document.getElementById('bpNodes');
+  let currentTierLabel = '—';
+  let currentTierIcon  = '';
+  TIERS.forEach((tier, i) => {
+    const xpNeeded = tierXPs[i];
+    const reached  = USER_XP >= xpNeeded;
+    const isNext   = !reached && (i === 0 || USER_XP >= tierXPs[i-1]);
+
+    if (reached) { currentTierLabel = tier.label; currentTierIcon = tier.icon; }
+
+    const stateClass = reached ? 'reached' : (isNext ? 'current' : 'locked');
+
+    const node = document.createElement('div');
+    node.className = ['bp-node', stateClass].join(' ');
+    node.style.left = (xs[i] / 480 * 100) + '%';
+    node.style.top  = (ys[i] / 640 * 100) + '%';
+
+    /* Ring with emoji */
+    const ring = document.createElement('div');
+    ring.className = 'bp-node-ring';
+    const emoji = document.createElement('span');
+    emoji.textContent = tier.icon;
+    ring.appendChild(emoji);
+    if (reached) {
+      const check = document.createElement('div');
+      check.className = 'bp-check';
+      check.textContent = '✓';
+      ring.appendChild(check);
+    }
+
+    /* Text block (label + xp) — goes below normally, or to the side */
+    const textWrap = document.createElement('div');
+    textWrap.className = 'bp-node-text';
+
+    const label = document.createElement('div');
+    label.className = 'bp-node-label';
+    label.textContent = tier.label;
+
+    const xpLabel = document.createElement('div');
+    xpLabel.className = 'bp-node-xp';
+    xpLabel.textContent = xpNeeded + ' XP';
+
+    textWrap.appendChild(label);
+    textWrap.appendChild(xpLabel);
+    node.appendChild(ring);
+    node.appendChild(textWrap);
+    container.appendChild(node);
+  });
+
+  /* Update hero bar */
+  const pct = MAX_XP > 0 ? Math.round(USER_XP / MAX_XP * 100) : 0;
+  document.getElementById('bpPctBadge').textContent = pct + '%';
+  document.getElementById('bpCurrentTierLabel').textContent =
+    currentTierIcon + ' ' + currentTierLabel;
+
+})();
+</script>
+{% endblock %}

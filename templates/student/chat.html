@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block title %}Чат с учителем{% endblock %}
+{% block extra_css %}
+<style>
+.chat-search-wrap {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.chat-search-input {
+  width: 100%;
+  padding: 7px 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+.chat-search-input:focus { border-color: var(--accent-green); }
+.contact-item { position: relative; }
+.contact-unread {
+  min-width: 18px;
+  height: 18px;
+  background: #FF6600;
+  color: #fff;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.contact-item.hidden { display: none; }
+.chat-section-title {
+  padding: 10px 14px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-student-chat">
+  <div class="page-header">
+    <h1>💬 Чат с учителем</h1>
+    <p class="page-subtitle">Задавай вопросы своему преподавателю</p>
+  </div>
+
+  {% if contacts %}
+  <div class="chat-layout {% if contact_id %}has-contact{% endif %}">
+    <!-- Contacts sidebar -->
+    <div class="chat-sidebar">
+
+      <!-- Search -->
+      <div class="chat-search-wrap">
+        <input type="text" id="contactSearch" class="chat-search-input"
+               placeholder="🔍 Поиск по имени..." oninput="filterContacts(this.value)">
+      </div>
+
+      <div class="chat-section-title">👩‍🏫 Учителя</div>
+      {% for c in contacts %}
+      <a href="{{ url_for('student_chat') }}?with={{ c.id }}"
+         class="contact-item {{ 'active' if contact_id == c.id else '' }}"
+         data-name="{{ c.username | lower }}" data-id="{{ c.id }}">
+        <span class="contact-avatar">{{ c.avatar_emoji }}</span>
+        <span class="contact-name">{{ c.username }}</span>
+        {% set cnt = unread_by_sender.get(c.id, 0) %}
+        <span class="contact-unread" data-sender="{{ c.id }}"
+              style="{{ 'display:none' if cnt == 0 else '' }}">{{ cnt if cnt else '' }}</span>
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- Chat area -->
+    <div class="chat-main">
+      {% if contact_id %}
+        {% set contact = contacts | selectattr('id', 'equalto', contact_id) | first %}
+        <div class="chat-header">
+          <a href="{{ url_for('student_chat') }}" class="chat-back-btn" title="Назад">←</a>
+          <span class="contact-avatar">{{ contact.avatar_emoji if contact else '👩‍🏫' }}</span>
+          <span>{{ contact.username if contact else 'Учитель' }}</span>
+        </div>
+        <div class="messages-area" id="messagesArea">
+          {% for msg in messages %}
+          <div class="message-wrap {{ 'mine' if msg.sender_id == current_user.id else 'theirs' }}">
+            <div class="message-bubble">
+              {{ msg.content }}
+              <span class="message-time">{{ msg.created_at | msk_time }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <form class="chat-input-form" onsubmit="sendMessage(event)">
+          <input type="text" id="msgInput" class="chat-input" placeholder="Написать сообщение..." autocomplete="off">
+          <button type="submit" class="btn btn-primary chat-send">→</button>
+        </form>
+      {% else %}
+        <div class="chat-empty">
+          <div class="chat-empty-icon">💬</div>
+          <p>Выбери учителя слева для начала диалога</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-page">
+    <div class="empty-icon">🐱</div>
+    <h2>Учителей не найдено</h2>
+    <p>Кодик ищет твоего учителя... Обратись к администратору для зачисления в группу.</p>
+  </div>
+  {% endif %}
+</div>
+<script>
+const CONTACT_ID = {{ contact_id or 'null' }};
+
+function scrollBottom() {
+  const area = document.getElementById('messagesArea');
+  if (!area) return;
+  requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
+}
+scrollBottom();
+
+async function sendMessage(e) {
+  e.preventDefault();
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text || !CONTACT_ID) return;
+  input.value = '';
+  input.focus();
+  await fetch('/api/messages', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({receiver_id: CONTACT_ID, content: text})
+  });
+  loadMessages();
+}
+
+let _lastMsgCount = 0;
+async function loadMessages() {
+  if (!CONTACT_ID) return;
+  const res = await fetch(`/api/messages?with=${CONTACT_ID}`);
+  const msgs = await res.json();
+  const area = document.getElementById('messagesArea');
+  if (!area) return;
+  if (msgs.length === _lastMsgCount) return;
+  _lastMsgCount = msgs.length;
+  const atBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 80;
+  area.innerHTML = msgs.map(m => `
+    <div class="message-wrap ${m.mine ? 'mine' : 'theirs'}">
+      <div class="message-bubble">
+        ${m.content}
+        <span class="message-time">${m.created_at}</span>
+      </div>
+    </div>
+  `).join('');
+  if (atBottom) scrollBottom();
+}
+
+async function updateUnreadBadges() {
+  try {
+    const counts = await (await fetch('/api/messages/unread-counts')).json();
+    document.querySelectorAll('.contact-unread[data-sender]').forEach(badge => {
+      const sid = badge.dataset.sender;
+      const n = counts[sid] || 0;
+      if (n > 0) {
+        badge.textContent = n;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    });
+  } catch (_) {}
+}
+
+function filterContacts(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.contact-item[data-name]').forEach(item => {
+    item.classList.toggle('hidden', q && !item.dataset.name.includes(q));
+  });
+}
+
+if (CONTACT_ID) {
+  loadMessages();
+  setInterval(loadMessages, 3000);
+}
+setInterval(updateUnreadBadges, 4000);
+</script>
+{% endblock %}

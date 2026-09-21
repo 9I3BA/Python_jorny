@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Регистрация | КодиК</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="auth-page" id="authBody">
+<button class="auth-theme-toggle" id="authThemeBtn" onclick="toggleTheme()" title="Сменить тему">🌙</button>
+<div class="auth-container">
+  <div class="auth-card auth-card-wide">
+    <div class="auth-header">
+      <div class="auth-logo">🐱</div>
+      <h1 class="auth-title">Регистрация</h1>
+      <p class="auth-subtitle">Зарегистрируйся как ученик или родитель</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+          <div class="flash flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="auth-form" autocomplete="off">
+      <!-- Role selector -->
+      <div class="role-selector">
+        <p class="role-selector-title">Кто ты?</p>
+        <div class="role-grid">
+          <label class="role-card" for="role-student">
+            <input type="radio" name="role" id="role-student" value="student" checked>
+            <div class="role-card-inner">
+              <div class="role-icon">🎒</div>
+              <div class="role-name">Ученик</div>
+              <div class="role-desc">Учусь программировать</div>
+            </div>
+          </label>
+          <label class="role-card" for="role-parent">
+            <input type="radio" name="role" id="role-parent" value="parent">
+            <div class="role-card-inner">
+              <div class="role-icon">👪</div>
+              <div class="role-name">Родитель</div>
+              <div class="role-desc">Слежу за успехами</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">👤 Имя пользователя</label>
+        <input type="text" name="username" id="regUsername" class="form-input" placeholder="student123" required autocomplete="off">
+        <div class="field-hint" id="hintUsername">Минимум 3 символа, без пробелов</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">📧 Email</label>
+        <input type="email" name="email" class="form-input" placeholder="your@email.com" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">🔒 Пароль</label>
+        <input type="password" name="password" id="regPassword" class="form-input" placeholder="Введите пароль" required autocomplete="new-password">
+        <div class="field-hint" id="hintPassword">Минимум 6 символов</div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Зарегистрироваться 🚀</button>
+    </form>
+
+    <p class="auth-switch">Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
+  </div>
+</div>
+<style>
+.field-hint {
+  font-size: 12px;
+  margin-top: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--text-muted, #888);
+  transition: color .2s;
+}
+.field-hint.hint-ok    { color: #4caf50; }
+.field-hint.hint-error { color: #ff5555; font-weight: 600; }
+</style>
+<script>
+document.querySelectorAll('.role-card input').forEach(input => {
+  input.addEventListener('change', () => {
+    document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+    input.closest('.role-card').classList.add('selected');
+  });
+});
+document.querySelector('#role-student').closest('.role-card').classList.add('selected');
+
+function validateField(input, hint, check, okText, errText) {
+  input.addEventListener('input', () => {
+    const valid = check(input.value);
+    hint.textContent = valid ? ('✓ ' + okText) : ('✗ ' + errText);
+    hint.className = 'field-hint ' + (valid ? 'hint-ok' : 'hint-error');
+  });
+}
+
+validateField(
+  document.getElementById('regUsername'),
+  document.getElementById('hintUsername'),
+  v => v.trim().length >= 3 && !/\s/.test(v),
+  'Имя подходит',
+  'Минимум 3 символа, без пробелов'
+);
+validateField(
+  document.getElementById('regPassword'),
+  document.getElementById('hintPassword'),
+  v => v.length >= 6,
+  'Пароль надёжный',
+  'Минимум 6 символов'
+);
+
+document.querySelector('.auth-form').addEventListener('submit', function(e) {
+  const u = document.getElementById('regUsername').value.trim();
+  const p = document.getElementById('regPassword').value;
+  if (u.length < 3 || /\s/.test(u)) {
+    e.preventDefault();
+    const h = document.getElementById('hintUsername');
+    h.textContent = '✗ Минимум 3 символа, без пробелов';
+    h.className = 'field-hint hint-error';
+    document.getElementById('regUsername').focus();
+    return;
+  }
+  if (p.length < 6) {
+    e.preventDefault();
+    const h = document.getElementById('hintPassword');
+    h.textContent = '✗ Минимум 6 символов';
+    h.className = 'field-hint hint-error';
+    document.getElementById('regPassword').focus();
+  }
+});
+</script>
+<style>
+.auth-theme-toggle {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  background: var(--bg-card, #111D33);
+  border: 1px solid var(--border, #1E3560);
+  color: var(--text-primary, #F0F2F8);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .2s, border-color .2s, transform .2s;
+  z-index: 999;
+  padding: 0;
+}
+.auth-theme-toggle:hover { transform: scale(1.1); }
+</style>
+<script>
+(function() {
+  const theme = localStorage.getItem('kodikTheme') || 'dark';
+  if (theme === 'light') {
+    document.getElementById('authBody').classList.add('light-theme');
+    const btn = document.getElementById('authThemeBtn');
+    if (btn) btn.textContent = '☀️';
+  }
+})();
+function toggleTheme() {
+  const body = document.getElementById('authBody');
+  const isLight = body.classList.toggle('light-theme');
+  localStorage.setItem('kodikTheme', isLight ? 'light' : 'dark');
+  document.getElementById('authThemeBtn').textContent = isLight ? '☀️' : '🌙';
+}
+</script>
+</body>
+</html>
